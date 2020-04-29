@@ -1,0 +1,18 @@
+{
+  "name": "vue-crudengine",
+  "version": "1.0.0",
+  "description": "Crudengine frontend api plugin for vuejs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "vuejs"
+  ],
+  "author": "zkny",
+  "license": "ISC",
+  "dependencies": {
+    "@nuxtjs/axios": "^5.10.2",
+    "nuxt": "^2.12.2"
+  }
+}

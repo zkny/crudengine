@@ -1,0 +1,19 @@
+{
+  "name": "crudengine",
+  "version": "1.0.1",
+  "description": "CRUD operation helper class for node.js + mongoose + express",
+  "main": "index.js",
+  "scripts": {
+    "test": "test"
+  },
+  "keywords": [
+    "mongoose"
+  ],
+  "author": "zkny",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.1",
+    "mongoose": "^5.9.10",
+    "mongoose-autopopulate": "^0.12.2"
+  }
+}
