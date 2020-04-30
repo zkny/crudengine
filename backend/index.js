@@ -324,7 +324,7 @@
           if (MFunctions.before && (await eval(MFunctions.before)) === true) {
             return;
           }
-          return mongoose.model(req.params.model).find(JSON.parse(req.query.filter), projection).sort(JSON.parse(req.query.sort)).limit(req.query.limit).then(async(results) => {
+          return mongoose.model(req.params.model).find(JSON.parse(req.query.filter), projection).sort(JSON.parse(req.query.sort)).skip(req.query.skip || 0).limit(req.query.limit).then(async(results) => {
             if (MFunctions.after && (await eval(MFunctions.after)) === true) {
               return;
             }

@@ -210,6 +210,7 @@ class CrudEngine
       if MFunctions.before and await eval(MFunctions.before) == true then return
       mongoose.model(req.params.model).find JSON.parse(req.query.filter), projection
       .sort JSON.parse req.query.sort
+      .skip req.query.skip || 0
       .limit req.query.limit
       .then (results) =>
         if MFunctions.after and await eval(MFunctions.after) == true then return
