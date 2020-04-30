@@ -105,7 +105,7 @@ class CrudEngine
 
   GenerateProto: () =>
     proto = "package api;\nsyntax = \"proto3\";\n\n"
-    
+
     for ModelName, Schema of @Schema
       proto += "message #{ModelName} {\n"
       id = 1
@@ -208,10 +208,13 @@ class CrudEngine
       projection = await @GetProjection(req.user._id, req.params.model)
 
       if MFunctions.before and await eval(MFunctions.before) == true then return
-      mongoose.model(req.params.model).find JSON.parse(req.query.filter), projection, (error, results) ->
-        if error then return res.status(500).send Error
+      mongoose.model(req.params.model).find JSON.parse(req.query.filter), projection
+      .sort JSON.parse req.query.sort
+      .limit req.query.limit
+      .then (results) =>
         if MFunctions.after and await eval(MFunctions.after) == true then return
         res.send { Headers, Data: results }
+      .catch (error) => res.status(500).send error
 
     Router.get '/:model/find', (req, res) =>
       MFunctions = @Middlewares[req.params.model].R
