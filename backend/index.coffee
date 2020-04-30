@@ -19,17 +19,19 @@ class CrudEngine
     ServiceDIR = @ServiceDIR
     SchemaDIR = @SchemaDIR
     @Middlewares = {}
-    SchemaFileArray = fs.readdirSync(SchemaDIR)
-    ServiceFileArray = fs.readdirSync( ServiceDIR )
-    for ServiceFile in ServiceFileArray
-      if ServiceFile is '.DS_Store' or ServiceFile.includes '.map'
-        continue
-      ServiceName = ServiceFile
-      .replace '.js', ''
-      .replace '.ts', ''
-      .replace 'coffee', ''
 
-      @Services[ServiceName] = require "#{ServiceDIR}/#{ServiceFile}"
+    SchemaFileArray = fs.readdirSync(SchemaDIR)
+    if ServiceDIR
+      ServiceFileArray = fs.readdirSync( ServiceDIR )
+      for ServiceFile in ServiceFileArray
+        if ServiceFile is '.DS_Store' or ServiceFile.includes '.map'
+          continue
+        ServiceName = ServiceFile
+        .replace '.js', ''
+        .replace '.ts', ''
+        .replace 'coffee', ''
+
+        @Services[ServiceName] = require "#{ServiceDIR}/#{ServiceFile}"
 
     for SchemaFile in SchemaFileArray
       if SchemaFile is '.DS_Store' or SchemaFile.includes '.map'
@@ -95,10 +97,39 @@ class CrudEngine
         if item.ref
           @Schema[ModelName][index].subheaders = @Schema[item.ref]
 
-    # the api.proto file should be done at this point
-    load path.resolve(__dirname, './api.proto'), (error, api) =>
-      if !error @API = api
+    @GenerateProto()
 
+    # the api.proto file should be done at this point
+    # load path.resolve(__dirname, './api.proto'), (error, api) =>
+    #   if !error @API = api
+
+  GenerateProto: () =>
+    proto = "package api;\nsyntax = \"proto3\";\n\n"
+    
+    for ModelName, Schema of @Schema
+      proto += "message #{ModelName} {\n"
+      id = 1
+
+      for item in Schema
+        type = @GetCorrectType( item )
+        if type == null then continue
+
+        proto += "\t#{type} #{item.name} = #{id};\n"
+        id++
+      proto += "}\n"
+
+      proto += "message #{ModelName}s {\n\trepeated #{ModelName} #{ModelName} = 1;\n}\n\n"
+
+    fs.writeFileSync path.resolve(__dirname, './api.proto'), proto, {flag: "w+"}
+
+  GetCorrectType: (item) =>
+    switch item.type
+      when 'Number' then 'float'
+      when 'String' then 'string'
+      when 'ObjectID'
+        if item.ref then item.ref
+        else 'string'
+      else null
 
   GetDeclinedReadFields: (uId, model) =>
     return new Promise (resolve, reject) =>
