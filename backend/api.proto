@@ -1,0 +1,68 @@
+// This is a test file, that will be overwriten
+
+package api;
+
+syntax = "proto3";
+
+message Projectriports {
+  repeated Projectriport projectriports = 1;
+}
+
+message Projectriport {
+  string date = 1;
+  float worker_number = 2;
+  float worker_request = 3;
+  Project project = 4;
+  string comment = 5;
+  Worker project_manager = 6;
+}
+
+message Workerriport {
+  string date = 1;
+  Worker worker = 2;
+  Workplace worksfrom = 3;
+}
+
+message Project {
+  string name = 1;
+  Office office = 2;
+  Brand brand = 3;
+  Industry industry = 4;
+  Subindustry subindustry = 5;
+  Employmenttype employmenttype = 6;
+  Worker project_manager = 7;
+  bool status = 8;
+}
+
+message Worker {
+  Office office = 1;
+  string position = 2;
+  Brand brand = 3;
+  string comment = 4;
+  bool status = 5;
+}
+
+message Workplace {
+  string name = 1;
+}
+
+message Office {
+  string name = 1;
+  string region = 2;
+}
+
+message Industry {
+  string name = 1;
+}
+
+message Subindustry {
+  string name = 1;
+  Industry industry = 2;
+}
+message Brand {
+  string name = 1;
+}
+
+message Employmenttype {
+  string name = 1;
+}

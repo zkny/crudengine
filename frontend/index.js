@@ -5,7 +5,50 @@ String.prototype.capitalize = function () {
 class __API {
   constructor(ctx) {
     this.$axios = ctx.$axios
+    this.Proto = {
 
+      Read: ( Model, Limit = null, Sort = null, Filter = null ) => {
+        return new Promise((resolve, reject) => {
+          this.$axios.$get(`/crud/proto/${Model.capitalize()}`, {
+            params: {
+              sort: Sort || { _id: 1 },
+              limit: Limit,
+              filter: Filter || {}
+            }
+          })
+          .then( r => resolve(r))
+          .catch( Error => reject(Error.response.data))
+        })
+      },
+
+      Table: ( Model, Limit = null, Sort = null, Filter = null ) => {
+        return new Promise((resolve, reject) => {
+          let promises = []
+          promises.push( new Promise(res, rej) => {
+            this.$axios.$get(`/crud/proto/${Model.capitalize()}`, {
+              params: {
+                sort: Sort || { _id: 1 },
+                limit: Limit,
+                filter: Filter || {}
+              }
+            })
+            .then( r => res(r))
+            .catch( Error => rej(Error.response.data))
+          })
+          promises.push( new Promise(res, rej) => {
+            this.$axios.$get(`/crud/tableheaders/${Model.capitalize()}`)
+            .then( r => res(r))
+            .catch( Error => rej(Error.response.data))
+          })
+          Promise.all(promises)
+          .then(results => {
+            resolve({ Headers: result[1], Data: results[0] })
+          }).catch( Error => reject(Error.response.data))
+        })
+      }
+
+    }
+  }
   GetService(Service, Function, Params) {
     this.$axios.$get(`/crud/getter/${Service.toLowerCase()}/${Function}`, { params: Params })
     .then( r => resolve(r))
@@ -16,7 +59,7 @@ class __API {
     .then( r => resolve(r))
     .catch( Error => reject(Error))
   }
-  Read( Model, Options = {})  {
+  Read( Model, Options = {}) {
     return new Promise((resolve, reject) => {
       // options: {fields: array, include: Bool default true, filter: mongodb filter object}
       this.$axios.$get(`/crud/${Model.capitalize()}/find`, {
@@ -62,6 +105,7 @@ class __API {
       .catch( Error => reject(Error.response.data))
     })
   }
+
   Table( Model, Limit = null, Sort = null, Filter = null ) {
     return new Promise((resolve, reject) => {
       this.$axios.$get(`/crud/table/${Model.capitalize()}`, {

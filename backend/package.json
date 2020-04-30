@@ -14,6 +14,7 @@
   "dependencies": {
     "express": "^4.17.1",
     "mongoose": "^5.9.10",
-    "mongoose-autopopulate": "^0.12.2"
+    "mongoose-autopopulate": "^0.12.2",
+    "protobufjs": "^6.9.0"
   }
 }
