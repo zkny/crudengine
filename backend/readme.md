@@ -10,7 +10,21 @@ of this, check it out [here](https://www.npmjs.com/package/vue-crudengine)!
 First we create an instance of the crudengine by telling it where we will place our
 schemas and services. Our schemas are basically the [mongoose models](https://mongoosejs.com/docs/models.html). The services are functions that we would like to run, but we don't want to register them as an independent route. But more about this later.
 
+## Table of contents
 
+* [Install](#install)
+* [Routes](#routes)
+  * [Read](#read)
+  * [Create](#create)
+  * [Update](#update)
+  * [Delete](#delete)
+* [Schemas](#schemas)
+* [Middleware](#middleware)
+* [Services](#services)
+* [About protobuf](#proto)
+* [Auth](#auth)
+
+<a name="install"></a>
 ```javascript
 const crudengine = require("crudengine");
 
@@ -20,10 +34,12 @@ Router.use(someGenericAuthMiddlware) // no auth, no data
 
 Router.use('/api', crud.GenerateRoutes()); // register as a route
 ```
+<a name="routes"></a>
 ## Routes
 
 All off the routes start with whatever we give them when we register then in the routes. So in this example /api
 
+<a name="routes"></a>
 ###### GET /schema | Returns all there is to know about the registered schemas | Object
 
 Params: none
