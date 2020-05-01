@@ -311,6 +311,8 @@ module.exports = Services
 JSON.stringify is cpu intensive and slow. When querying a large set of data it is beneficial to use
 something lighter than JSON. We use protocol buffers to help with that. In order to be able to work with protobuf normally we need to create a .proto file that includes all schemas and a bit more. Crudengine will do that for us automatically.
 
+If we want to decode the data crudengine serves the .proto file at /api/protofile
+
 ##### The problem with this is that you can only use camelCase and no snake_case in the schema keys. Also we have to decode the data in the frontend, but if we use the [vue-crudengine](https://www.npmjs.com/package/vue-crudengine) (which is recommended anyway) package as well, it is done for us.
 
 <a name="auth"></a>
