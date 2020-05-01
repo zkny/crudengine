@@ -4,7 +4,8 @@
   "description": "CRUD operation helper class for node.js + mongoose + express",
   "main": "index.js",
   "scripts": {
-    "test": "test"
+    "test": "test",
+    "dev": "nodemon Server.js"
   },
   "keywords": [
     "mongoose",
@@ -20,8 +21,11 @@
   "author": "zkny",
   "license": "MIT",
   "dependencies": {
+    "bluebird": "^3.7.2",
+    "body-parser": "^1.19.0",
+    "cors": "^2.8.5",
     "express": "^4.17.1",
-    "mongoose": "^5.9.10",
+    "mongoose": "^5.9.11",
     "mongoose-autopopulate": "^0.12.2",
     "protobufjs": "^6.9.0"
   }
