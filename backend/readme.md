@@ -69,7 +69,7 @@ axios.get('/api/User/find', {
 Params:
 
 | key | description | type | example |
-|:-:|:-:|:-:|:-:|
+|:-:|-|:-:|:-:|
 | filter | [Mongodb query](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.htmls) | Object | { age: 18 } |
 | projection | Fields to include in results. Uses mongodb [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html). | array of strings | ['name'] |
 | sort | [Mongodb sort](https://docs.mongodb.com/manual/reference/method/cursor.sort/index.html) | object | { age : -1 } |
@@ -91,7 +91,7 @@ axios.get('/api/User/507f191e810c19729de860ea', {
 Params:
 
 | key | description | type | example |
-|:-:|:-:|:-:|:-:|
+|:-:|-|:-:|:-:|
 | projection | Fields to include in [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html). | array of strings | ['name'] |
 
 ### /proto/:model
@@ -113,7 +113,7 @@ axios.get('/api/proto/User', {
 Params:
 
 | key | description | type | example |
-|:-:|:-:|:-:|:-:|
+|:-:|-|:-:|:-:|
 | filter | [Mongodb query](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.htmls) | Object | { age: { $exists: true } } |
 | projection | Fields to include in [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html) | array of strings | ['name'] |
 | sort | [Mongodb sort](https://docs.mongodb.com/manual/reference/method/cursor.sort/index.html) | object | { age : -1, posts: 1 } |
@@ -183,7 +183,7 @@ No snake_case if you want protobuf!
 If the accesslevel number system means nothing to you go to the auth [section](#auth).
 
 | Param    |  Description                                                   | required |
-|:--------:|:--------------------------------------------------------------:|:-----:|
+|:--------:|--------------------------------------------------------------|:-----:|
 | alias    |  This could be what we display. username: { alias: "Caller" }  | false |
 | description | This could be displayed on hover. username: { description: "this is how we call the around here" } |  false |
 | minWriteAuth | Number from 100 to 300, the smaller the better, if its 200 you need accesslevel below 200 to update or create this field |  defaults to 300 |
