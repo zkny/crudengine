@@ -32,7 +32,7 @@ Params: none
 
 Params:
 | key | description | type | example |
-|:-:|:-:|:-:|:-:|
+|---------|----------|-------|------|
 | projection | Fields to include in [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html). | array of strings | ['name'] |
 | filter | [Mongodb query](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.htmls) | Object | { age: { $exists: true } } |
 | sort | [Mongodb sort](https://docs.mongodb.com/manual/reference/method/cursor.sort/index.html) | object | { age : -1, posts: 1 } |
