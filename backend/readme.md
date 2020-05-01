@@ -114,9 +114,9 @@ Params:
 
 | key | description | type | example |
 |:-:|-|:-:|:-:|
-| filter | [Mongodb query](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.htmls) | Object | { age: { $exists: true } } |
+| filter | [Mongodb query](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.htmls) | Object | { age: 18 } |
 | projection | Fields to include in [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html) | array of strings | ['name'] |
-| sort | [Mongodb sort](https://docs.mongodb.com/manual/reference/method/cursor.sort/index.html) | object | { age : -1, posts: 1 } |
+| sort | [Mongodb sort](https://docs.mongodb.com/manual/reference/method/cursor.sort/index.html) | object | { age : -1 } |
 | skip | 	The number of documents to skip in the results set. | number | 10 |
 | limit |  	The number of documents to include in the results set. | number | 10 |
 
