@@ -323,8 +323,8 @@ If we do find it, we can modify what the user who issues the request can see bas
 will get the field removed from the results. In case of update or create the minWriteAuth will rule. If there is a missmatch the request will fail with status 500 and a message saying 'EPERM'.
 
 ## Authors
-Horváth Bálint
-Zákány Balázs
+* Horváth Bálint
+* Zákány Balázs
 
 ## Contributing
 Email us at <a href="mailto:balzs.zkny9@gmail.com">zkny</a> or <a href="horvbalint99@gmail.com">horvbalint</a>
