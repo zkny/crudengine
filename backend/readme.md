@@ -327,7 +327,7 @@ will get the field removed from the results. In case of update or create the min
 * Zákány Balázs
 
 ## Contributing
-Email us at <a href="mailto:balzs.zkny9@gmail.com">zkny</a> or <a href="horvbalint99@gmail.com">horvbalint</a>
+Email us at <a href="mailto:balzs.zkny9@gmail.com">zkny</a> or <a href="mailto:horvbalint99@gmail.com">horvbalint</a>
 
 ## Licence
-MIT
+[MIT](https://opensource.org/licenses/MIT)
