@@ -31,8 +31,9 @@ Params: none
 > GET /:model/find | Returns documents for the schema. Replace the :model with the schema name. | Array of Objects
 
 Params:
+
 | key | description | type | example |
-|---------|----------|-------|------|
+|:-:|:-:|:-:|:-:|
 | projection | Fields to include in [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html). | array of strings | ['name'] |
 | filter | [Mongodb query](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.htmls) | Object | { age: { $exists: true } } |
 | sort | [Mongodb sort](https://docs.mongodb.com/manual/reference/method/cursor.sort/index.html) | object | { age : -1, posts: 1 } |
@@ -42,6 +43,7 @@ Params:
 > GET /:model/:id | Returns one document. Replace :model with the schema name and :id withe the desired documents Mongodb id | Object
 
 Params:
+
 | key | description | type | example |
 |:-:|:-:|:-:|:-:|
 | projection | Fields to include in [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html). | array of strings | ['name'] |
@@ -49,6 +51,7 @@ Params:
 > GET /proto/:model | The same as /:model/find but uses [protobuf](https://developers.google.com/protocol-buffers). Replace the :model with the schema name. | ArrayBuffer - Uint8Array
 
 Params:
+
 | key | description | type | example |
 |:-:|:-:|:-:|:-:|
 | projection | Fields to include in [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html) | array of strings | ['name'] |
@@ -91,7 +94,7 @@ No snake_case if you want protobuf!
 If the accesslevel number system means nothing to you go to the auth section.
 
 | Param    |  Description                                                   | required |
-|----------|:--------------------------------------------------------------:|-----:|
+|:--------:|:--------------------------------------------------------------:|:-----:|
 | alias    |  This could be what we display. username: { alias: "Caller" }  | false |
 | description | This could be displayed on hover. username: { description: "this is how we call the around here" } |  false |
 | minWriteAuth | Number from 100 to 300, the smaller the better, if its 200 you need accesslevel below 200 to update or create this field |  defaults to 300 |
