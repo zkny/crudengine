@@ -12,7 +12,7 @@
     "crudengine"
   ],
   "author": "zkny",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@nuxtjs/axios": "^5.10.2",
     "nuxt": "^2.12.2"

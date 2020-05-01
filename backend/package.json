@@ -10,10 +10,15 @@
     "mongoose",
     "express",
     "protobuf",
-    "crudengine"
+    "crudengine",
+    "crud",
+    "mongodb",
+    "nodejs",
+    "framework",
+    "rest"
   ],
   "author": "zkny",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "express": "^4.17.1",
     "mongoose": "^5.9.10",
