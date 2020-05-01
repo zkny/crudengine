@@ -189,7 +189,7 @@
       GetDeclinedWriteFields(uId, model) {
         return new Promise((resolve, reject) => {
           if (uId === null) {
-            return resolve([]);
+            return resolve(null);
           }
           return mongoose.model('User').findOne({
             _id: uId
@@ -213,15 +213,15 @@
       async GetProjection(uId, model, fields = [], include = false) {
         var projection;
         projection = {};
-        if (!include) {
-          fields.map((one) => {
-            return projection[one] = 0;
-          });
-        } else {
+        if (include) {
           this.Schema[model].map((one) => {
             if (!fields.includes(one.name)) {
               return projection[one.name] = 0;
             }
+          });
+        } else {
+          fields.map((one) => {
+            return projection[one] = 0;
           });
         }
         ((await this.GetDeclinedReadFields(uId, model))).map((one) => {
@@ -280,7 +280,6 @@
         // Generate the crud routes for each model
         Router.get('/getter/:service/:fun', (req, res) => {
           return this.Services[req.params.service][req.params.fun].call(null, {
-            route: req.params,
             params: req.query
           }).then(function(data) {
             return res.send(data);
@@ -290,7 +289,6 @@
         });
         Router.post('/runner/:service/:fun', (req, res) => {
           return this.Services[req.params.service][req.params.fun].call(null, {
-            route: req.params,
             params: req.body
           }).then(function(data) {
             return res.send(data);
@@ -322,7 +320,6 @@
             message = ProtoType.fromObject({
               [`${req.params.model}s`]: results
             });
-            console.log(message);
             buffer = ProtoType.encode(message).finish();
             return res.send(buffer);
           }).catch((error) => {
@@ -367,7 +364,7 @@
             req.query.sort = "{}";
           }
           MFunctions = this.Middlewares[req.params.model].R;
-          projection = (await this.GetProjection((req.user ? req.user._id : null), req.params.model, req.query.projection, true));
+          projection = (await this.GetProjection((req.user ? req.user._id : null), req.params.model, req.query.projection, false));
           if (MFunctions.before && (await eval(MFunctions.before)) === true) {
             return;
           }
@@ -383,7 +380,7 @@
         Router.get("/:model/:id", async(req, res) => {
           var MFunctions, projection;
           MFunctions = this.Middlewares[req.params.model].R;
-          projection = (await this.GetProjection((req.user ? req.user._id : null), req.params.model, req.query.projection, true));
+          projection = (await this.GetProjection((req.user ? req.user._id : null), req.params.model, req.query.projection, false));
           if (MFunctions.before && (await eval(MFunctions.before)) === true) {
             return;
           }

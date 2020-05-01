@@ -140,7 +140,7 @@ class CrudEngine
 
   GetDeclinedWriteFields: (uId, model) =>
     return new Promise (resolve, reject) =>
-      if uId == null then return resolve []
+      if uId == null then return resolve null
 
       mongoose.model('User').findOne {_id: uId}, (error, user) =>
         declinedFields = @Schema[model].filter((field) => field.minWriteAuth != undefined && field.minWriteAuth < user.accesslevel)
@@ -150,8 +150,8 @@ class CrudEngine
   GetProjection: (uId, model, fields = [], include = false) =>
     projection = {}
 
-    if !include then fields.map (one) => projection[one] = 0
-    else @Schema[model].map (one) => if !fields.includes(one.name) then projection[one.name] = 0
+    if include then @Schema[model].map (one) => if !fields.includes(one.name) then projection[one.name] = 0
+    else fields.map (one) => projection[one] = 0
 
     (await @GetDeclinedReadFields(uId, model)).map( (one) => projection[one.name] = 0 )
 
@@ -177,12 +177,12 @@ class CrudEngine
 
     # Generate the crud routes for each model
     Router.get '/getter/:service/:fun', (req, res) =>
-      @Services[req.params.service][req.params.fun].call(null,{ route: req.params, params: req.query })
+      @Services[req.params.service][req.params.fun].call(null, { params: req.query })
       .then (data) -> res.send data
       .catch (error) -> res.status(500).send error
 
     Router.post '/runner/:service/:fun', (req, res) =>
-      @Services[req.params.service][req.params.fun].call(null,{ route: req.params, params: req.body })
+      @Services[req.params.service][req.params.fun].call(null, { params: req.body })
       .then (data) -> res.send data
       .catch (error) -> res.status(500).send error
 
@@ -207,7 +207,6 @@ class CrudEngine
 
         ProtoType = @API.lookupType "api.#{req.params.model}s"
         message = ProtoType.fromObject { ["#{req.params.model}s"]: results }
-        console.log message
         buffer = ProtoType.encode(message).finish()
 
         res.send buffer
@@ -239,7 +238,7 @@ class CrudEngine
       if !req.query.sort then req.query.sort = "{}"
 
       MFunctions = @Middlewares[req.params.model].R
-      projection = await @GetProjection( (if req.user then req.user._id else null), req.params.model, req.query.projection, true )
+      projection = await @GetProjection( (if req.user then req.user._id else null), req.params.model, req.query.projection, false )
 
       if MFunctions.before and await eval(MFunctions.before) == true then return
       mongoose.model(req.params.model).find JSON.parse(req.query.filter), projection
@@ -253,7 +252,7 @@ class CrudEngine
 
     Router.get "/:model/:id", (req, res) =>
       MFunctions = @Middlewares[req.params.model].R
-      projection = await @GetProjection( (if req.user then req.user._id else null), req.params.model, req.query.projection, true )
+      projection = await @GetProjection( (if req.user then req.user._id else null), req.params.model, req.query.projection, false )
       if MFunctions.before and await eval(MFunctions.before) == true then return
       mongoose.model(req.params.model).findOne { _id: req.params.id }, projection, (error, results) =>
         if error then return res.status(500).send error

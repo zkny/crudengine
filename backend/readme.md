@@ -299,7 +299,7 @@ const Services = {
     })
   },
   LogSomethingElse: async (Data) => {
-	  await this.LogSomething(Data)
+	  return await this.LogSomething(Data)
   }
 }
 
