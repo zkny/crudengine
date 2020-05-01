@@ -24,11 +24,11 @@ Router.use('/api', crud.GenerateRoutes()); // register as a route
 
 All off the routes start with whatever we give them when we register then in the routes. So in this example /api
 
-> GET /schema | Returns all there is to know about the registered schemas | Object
+###### GET /schema | Returns all there is to know about the registered schemas | Object
 
 Params: none
 
-> GET /:model/find | Returns documents for the schema. Replace the :model with the schema name. | Array of Objects
+###### GET /:model/find | Returns documents for the schema. Replace the :model with the schema name. | Array of Objects
 
 Params:
 
@@ -40,7 +40,7 @@ Params:
 | skip | 	The number of documents to skip in the results set. | number | 10 |
 | limit |  	The number of documents to include in the results set. | number | 10 |
 
-> GET /:model/:id | Returns one document. Replace :model with the schema name and :id withe the desired documents Mongodb id | Object
+###### GET /:model/:id | Returns one document. Replace :model with the schema name and :id withe the desired documents Mongodb id | Object
 
 Params:
 
@@ -48,7 +48,7 @@ Params:
 |:-:|:-:|:-:|:-:|
 | projection | Fields to include in [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html). | array of strings | ['name'] |
 
-> GET /proto/:model | The same as /:model/find but uses [protobuf](https://developers.google.com/protocol-buffers). Replace the :model with the schema name. | ArrayBuffer - Uint8Array
+###### GET /proto/:model | The same as /:model/find but uses [protobuf](https://developers.google.com/protocol-buffers). Replace the :model with the schema name. | ArrayBuffer - Uint8Array
 
 Params:
 
@@ -61,31 +61,31 @@ Params:
 | limit |  	The number of documents to include in the results set. | number | 10 |
 
 
-> GET /tableheaders/:model | Get the keys, aliases and descriptions for the schema and for the subschemas (refs to other schemas). Replace the :model with the schema name. | Array of Objects
+###### GET /tableheaders/:model | Get the keys, aliases and descriptions for the schema and for the subschemas (refs to other schemas). Replace the :model with the schema name. | Array of Objects
 
 Params: none
 
-> GET /getter/:service/:function | Run a function in services. Replace :service with the name of the service file, replace :function with the service function names that we want to run.
+###### GET /getter/:service/:function | Run a function in services. Replace :service with the name of the service file, replace :function with the service function names that we want to run.
 
 params: whatever we send. See Services section for more info!
 
-> POST /runner/:service/:function | Run a function in services. Replace :service with the name of the service file, replace :function with the service function names that we want to run.
+###### POST /runner/:service/:function | Run a function in services. Replace :service with the name of the service file, replace :function with the service function names that we want to run.
 
 params: whatever we send. See Services section for more info!
 
 The difference between the two is just the method. With POST you can send data more easily and not get the results cached, with GET you can get the results cached.
 
-> POST /:model | Creates a new document. Replace the :model with the schema name. | Object
+###### POST /:model | Creates a new document. Replace the :model with the schema name. | Object
 
 Params: An object that matches the mongoose schema. The whole req.body should be the object
 ```javascript
 axios.post( `/crud/${MyModel.capitalize()}`, MyModelObject )
 ```
-> PATCH /:model | Updates document. Replace the :model with the schema name. | Object
+###### PATCH /:model | Updates document. Replace the :model with the schema name. | Object
 
 Params: A mongodb document that we modified. (ObjectID included)
 
-> DELETE /:model/:id | Deletes a document. Replace the :model with the schema name :id with the documents id. | Object
+###### DELETE /:model/:id | Deletes a document. Replace the :model with the schema name :id with the documents id. | Object
 
 ## Schemas
 For this to work we need to create valid mongoose schemas, but we should add some extra things.
