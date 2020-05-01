@@ -7,7 +7,7 @@ message Brand {
 	float __v = 3;
 }
 message Brands {
-	repeated Brand Brand = 1;
+	repeated Brand Brands = 1;
 }
 
 message Employmenttype {
@@ -16,7 +16,7 @@ message Employmenttype {
 	float __v = 3;
 }
 message Employmenttypes {
-	repeated Employmenttype Employmenttype = 1;
+	repeated Employmenttype Employmenttypes = 1;
 }
 
 message Industry {
@@ -25,7 +25,7 @@ message Industry {
 	float __v = 3;
 }
 message Industrys {
-	repeated Industry Industry = 1;
+	repeated Industry Industrys = 1;
 }
 
 message Office {
@@ -35,7 +35,7 @@ message Office {
 	float __v = 4;
 }
 message Offices {
-	repeated Office Office = 1;
+	repeated Office Offices = 1;
 }
 
 message Project {
@@ -50,7 +50,7 @@ message Project {
 	float __v = 9;
 }
 message Projects {
-	repeated Project Project = 1;
+	repeated Project Projects = 1;
 }
 
 message Projectriport {
@@ -63,7 +63,7 @@ message Projectriport {
 	float __v = 7;
 }
 message Projectriports {
-	repeated Projectriport Projectriport = 1;
+	repeated Projectriport Projectriports = 1;
 }
 
 message Subindustry {
@@ -73,7 +73,7 @@ message Subindustry {
 	float __v = 4;
 }
 message Subindustrys {
-	repeated Subindustry Subindustry = 1;
+	repeated Subindustry Subindustrys = 1;
 }
 
 message User {
@@ -85,7 +85,7 @@ message User {
 	float __v = 6;
 }
 message Users {
-	repeated User User = 1;
+	repeated User Users = 1;
 }
 
 message Worker {
@@ -98,7 +98,7 @@ message Worker {
 	float __v = 7;
 }
 message Workers {
-	repeated Worker Worker = 1;
+	repeated Worker Workers = 1;
 }
 
 message Workerriport {
@@ -108,7 +108,7 @@ message Workerriport {
 	float __v = 4;
 }
 message Workerriports {
-	repeated Workerriport Workerriport = 1;
+	repeated Workerriport Workerriports = 1;
 }
 
 message Workplace {
@@ -117,6 +117,6 @@ message Workplace {
 	float __v = 3;
 }
 message Workplaces {
-	repeated Workplace Workplace = 1;
+	repeated Workplace Workplaces = 1;
 }
 
