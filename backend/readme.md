@@ -57,7 +57,7 @@ axios.get('/api/schema')
 * Returns: Array of Objects
 ```javascript
 axios.get('/api/User/find', {
-  Params: {
+  params: {
 	  filter: { email: { $exists: true } },
 	  projection: [ 'username', 'email' ],
 	  sort: { username: 1 },
@@ -83,7 +83,7 @@ Params:
 * Returns: Object
 ```javascript
 axios.get('/api/User/507f191e810c19729de860ea', {
-  Params: {
+  params: {
 	  projection: [ 'username', 'email' ]
   }
 })
@@ -101,7 +101,7 @@ Params:
 ```javascript
 axios.get('/api/proto/User', {
   responseType: 'arraybuffer',
-  Params: {
+  params: {
 	  filter: { email: { $exists: true } },
 	  projection: [ 'username', 'email' ],
 	  sort: { username: 1 },

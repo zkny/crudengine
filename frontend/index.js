@@ -1,72 +1,41 @@
-String.prototype.capitalize = function () {
-  return this.charAt(0).toUpperCase() + this.slice(1)
-}
+const { load } = require('protobufjs');
 
-class __API {
-  constructor(ctx) {
+export default class __API {
+  API = null
+  constructor(ctx, Prefix) {
     this.$axios = ctx.$axios
-    this.Proto = {
-
-      Read: ( Model, Limit = null, Sort = null, Filter = null ) => {
-        return new Promise((resolve, reject) => {
-          this.$axios.$get(`/crud/proto/${Model.capitalize()}`, {
-            params: {
-              sort: Sort || { _id: 1 },
-              limit: Limit,
-              filter: Filter || {}
-            }
-          })
-          .then( r => resolve(r))
-          .catch( Error => reject(Error.response.data))
-        })
-      },
-
-      Table: ( Model, Limit = null, Sort = null, Filter = null ) => {
-        return new Promise((resolve, reject) => {
-          let promises = []
-          promises.push( new Promise(res, rej) => {
-            this.$axios.$get(`/crud/proto/${Model.capitalize()}`, {
-              params: {
-                sort: Sort || { _id: 1 },
-                limit: Limit,
-                filter: Filter || {}
-              }
-            })
-            .then( r => res(r))
-            .catch( Error => rej(Error.response.data))
-          })
-          promises.push( new Promise(res, rej) => {
-            this.$axios.$get(`/crud/tableheaders/${Model.capitalize()}`)
-            .then( r => res(r))
-            .catch( Error => rej(Error.response.data))
-          })
-          Promise.all(promises)
-          .then(results => {
-            resolve({ Headers: result[1], Data: results[0] })
-          }).catch( Error => reject(Error.response.data))
-        })
-      }
-
-    }
+    this.Prefix = Prefix
+  }
+  initProto() {
+    return new Promise((resolve, reject) => {
+      this.$axios.$get(`/${this.Prefix}/protofile`)
+      .then( file => {
+        this.API = await load(file)
+      }).catch( Error => reject(Error))
+    })
+  }
+  _capitalize( string ) {
+    return string.charAt(0).toUpperCase() + string.slice(1)
   }
   GetService(Service, Function, Params) {
-    this.$axios.$get(`/crud/getter/${Service.toLowerCase()}/${Function}`, { params: Params })
+    this.$axios.$get(`/${this.Prefix}/getter/${Service.toLowerCase()}/${Function}`, { params: Params })
     .then( r => resolve(r))
     .catch( Error => reject(Error))
   }
   RunService(Service, Function, Params) {
-    this.$axios.$post(`/crud/runner/${Service.toLowerCase()}/${Function}`, Params )
+    this.$axios.$post(`/${this.Prefix}/runner/${Service.toLowerCase()}/${Function}`, Params )
     .then( r => resolve(r))
     .catch( Error => reject(Error))
   }
   Read( Model, Options = {}) {
     return new Promise((resolve, reject) => {
-      // options: {fields: array, include: Bool default true, filter: mongodb filter object}
-      this.$axios.$get(`/crud/${Model.capitalize()}/find`, {
+      this.$axios.$get(`/${this.Prefix}/${this._capitalize(Model)}/find`, {
         params: {
-          fields: Options.fields,
-          include: Options.include,
-          filter: Options.filter || {}
+          filter: Options.filter || {},
+          projection: Options.projection,
+          sort: Options.sort || {},
+          skip: Options.skip,
+          limit: Options.limit
         }
       }).then( r => resolve(r))
       .catch( Error => reject(Error))
@@ -74,11 +43,9 @@ class __API {
   }
   Get( Model, Id, Options = {}) {
     return new Promise((resolve, reject) => {
-      // options: {fields: array, include: Bool default true}
-      this.$axios.$get(`/crud/${Model.capitalize()}/${Id}`, {
+      this.$axios.$get(`/${this.Prefix}/${this._capitalize(Model)}/${Id}`, {
         params: {
-          fields: Options.fields,
-          include: Options.include
+          projection: Options.projection,
         }
       }).then( r => resolve(r))
       .catch( Error => reject(Error))
@@ -86,46 +53,67 @@ class __API {
   }
   Create( Model, Data ) {
     return new Promise((resolve, reject) => {
-      this.$axios.$post(`/crud/${Model.capitalize()}`, Data)
+      this.$axios.$post(`/${this.Prefix}/${this._capitalize(Model)}`, Data)
       .then( r => resolve(r))
       .catch( Error => reject(Error.response.data) )
     })
   }
   Update( Model, Data ) {
     return new Promise((resolve, reject) => {
-      this.$axios.$patch(`/crud/${Model.capitalize()}`, Data)
+      this.$axios.$patch(`/${this.Prefix}/${this._capitalize(Model)}`, Data)
       .then( r => resolve(r))
       .catch( Error => reject(Error.response.data))
     })
   }
   Delete( Model, Id ) {
     return new Promise((resolve, reject) => {
-      this.$axios.$delete(`/crud/${Model.capitalize()}/${Id}`)
+      this.$axios.$delete(`/${this.Prefix}/${this._capitalize(Model)}/${Id}`)
       .then( r => resolve(r))
       .catch( Error => reject(Error.response.data))
     })
   }
 
-  Table( Model, Limit = null, Sort = null, Filter = null ) {
+  TableHeaders( Model ) {
     return new Promise((resolve, reject) => {
-      this.$axios.$get(`/crud/table/${Model.capitalize()}`, {
-        params: {
-          sort: Sort || { _id: 1 },
-          limit: Limit,
-          filter: Filter || {}
-        }
-      })
+      this.$axios.$get(`/${this.Prefix}/tableheaders/${this._capitalize(Model)}`)
       .then( r => resolve(r))
       .catch( Error => reject(Error.response.data))
     })
   }
-}
 
+  Table( Model, Options = {} ) {
+    return new Promise((resolve, reject) => {
+      Promise.all([ this.TableHeaders(Model), this.Read(Model, Options) ])
+      .then( promises => resolve({ Headers: promises[0], Data: promises[1] }) )
+      .catch( Error => reject(Error.response.data))
+    })
+  }
 
-export default ( ctx, inject ) => {
+  ProtoTable( Model, Options = {} ) {
+    return new Promise((resolve, reject) => {
+      Promise.all([ this.TableHeaders(Model), this.ProtoRead(Model, Options) ])
+      .then( promises => resolve({ Headers: promises[0], Data: promises[1] }) )
+      .catch( Error => reject(Error.response.data))
+    })
+  }
 
-  const API = new __API(ctx)
-  ctx.$API = API
-  inject( 'API', API )
+  ProtoRead( Model, Options = {} ) {
+    return new Promise((resolve, reject) => {
+      if (!this.API) return reject("Protobuf file isn't set. Use initProto() to set it.")
 
+      this.$axios.get(`/${this.Prefix}/proto/${this._capitalize(Model)}`, {
+        responseType: 'arraybuffer',
+        params: {
+          filter: Options.filter || {},
+          projection: Options.projection,
+          sort: Options.sort || {},
+          skip: Options.skip,
+          limit: Options.limit
+        }
+      }).then( response => {
+        const ProtoType = this.API.lookupType(`api.${this._capitalize(Model)}s`)
+        resolve( ProtoType.decode( new Uint8Array(response.data) ) )
+      }).catch( Error => reject(Error))
+    })
+  }
 }
