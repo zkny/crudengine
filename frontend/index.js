@@ -97,7 +97,7 @@ export default class __API {
   }
 
   ProtoTable( Model, Options = {} ) {
-    return necontextw Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       Promise.all([ this.TableHeaders(Model), this.ProtoRead(Model, Options) ])
       .then( promises => resolve({ Headers: promises[0], Data: promises[1] }) )
       .catch( Error => reject(Error.response.data))
