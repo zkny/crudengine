@@ -1,17 +1,17 @@
 const { load } = require('protobufjs');
 
 export default class __API {
-  API = null
   constructor(ctx, Prefix) {
     this.$axios = ctx.$axios
     this.Prefix = Prefix
   }
-  initProto() {
+  initProto(Protofile) {
     return new Promise((resolve, reject) => {
-      this.$axios.$get(`/${this.Prefix}/protofile`)
-      .then( file => {
-        this.API = await load(file)
-      }).catch( Error => reject(Error))
+      load(Protofile, (error, api) => {
+        if (error) return reject()
+        this.API = api
+        resolve()
+      })
     })
   }
   _capitalize( string ) {
