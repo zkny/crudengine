@@ -1,8 +1,8 @@
 const { load } = require('protobufjs');
 
 export default class __API {
-  constructor(ctx, Prefix) {
-    this.$axios = ctx.$axios
+  constructor( axios, Prefix ) {
+    this.$axios = axios
     this.Prefix = Prefix
   }
   initProto(Protofile) {
