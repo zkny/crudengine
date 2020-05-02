@@ -27,6 +27,13 @@ export default class __API {
     .then( r => resolve(r))
     .catch( Error => reject(Error))
   }
+  Schema() {
+    return new Promise((resolve, reject) => {
+      this.$axios.$delete(`/${this.Prefix}/schema`)
+      .then( r => resolve(r))
+      .catch( Error => reject(Error.response.data))
+    })
+  }
   Read( Model, Options = {}) {
     return new Promise((resolve, reject) => {
       this.$axios.$get(`/${this.Prefix}/${this._capitalize(Model)}/find`, {
