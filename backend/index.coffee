@@ -114,7 +114,8 @@ class CrudEngine
         type = @GetCorrectType( item )
         if type == null then continue
 
-        proto += "\t#{type} #{item.name} = #{id};\n"
+        if item.isArray then proto += "\trepeated #{type} #{item.name} = #{id};\n"
+        else proto += "\t#{type} #{item.name} = #{id};\n"
         id++
       proto += "}\n"
 
@@ -126,6 +127,7 @@ class CrudEngine
     switch item.type
       when 'Number' then 'float'
       when 'String' then 'string'
+      when 'Date'   then 'string'
       when 'ObjectID'
         if item.ref then item.ref
         else 'string'

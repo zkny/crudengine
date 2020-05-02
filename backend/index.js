@@ -140,7 +140,11 @@
             if (type === null) {
               continue;
             }
-            proto += `\t${type} ${item.name} = ${id};\n`;
+            if (item.isArray) {
+              proto += `\trepeated ${type} ${item.name} = ${id};\n`;
+            } else {
+              proto += `\t${type} ${item.name} = ${id};\n`;
+            }
             id++;
           }
           proto += "}\n";
@@ -156,6 +160,8 @@
           case 'Number':
             return 'float';
           case 'String':
+            return 'string';
+          case 'Date':
             return 'string';
           case 'ObjectID':
             if (item.ref) {
