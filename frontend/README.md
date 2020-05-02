@@ -157,7 +157,7 @@ DocumentObject: An object that matches the mongoose schema.
 ### Update
 >Updates a document in database.
 * Method: PATCH
-* Resolves into: Object (mongodb document)
+* Resolves into: [WriteResults](https://docs.mongodb.com/manual/reference/method/db.collection.update/#writeresults-update)
 ```javascript
 this.$API.Update( ModelName, DocumentObject )
 .then( Document => ... )
@@ -168,9 +168,9 @@ DocumentObject: A mongodb document that we modified. (ObjectID included)
 ### Delete
 >Deletes a document from database.
 * Method: DELETE
-* Resolves into: Object (mongodb document)
+* Resolves into: [WriteResults](https://docs.mongodb.com/manual/reference/method/db.collection.update/#writeresults-update)
 ```javascript
-this.$API.Update( ModelName, Id )
+this.$API.Delete( ModelName, Id )
 .then( Document => ... )
 .catch( Error => ... )
 ```

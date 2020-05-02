@@ -31,7 +31,7 @@ mongoose.connect('mongodb://localhost:27017/napiriporter', {
   process.exit()
 })
 
-app.set('port', process.env.PORT || 3000);
+app.set('port', process.env.PORT || 3001);
 
 app.use(bodyParser.json({ limit: '100mb' }));
 app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));

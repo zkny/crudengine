@@ -18,18 +18,22 @@ export default class __API {
     return string.charAt(0).toUpperCase() + string.slice(1)
   }
   GetService(Service, Function, Params) {
-    this.$axios.$get(`/${this.Prefix}/getter/${Service.toLowerCase()}/${Function}`, { params: Params })
-    .then( r => resolve(r))
-    .catch( Error => reject(Error))
+    return new Promise( (resolve, reject) => {
+      this.$axios.$get(`/${this.Prefix}/getter/${Service.toLowerCase()}/${Function}`, { params: Params })
+      .then( r => resolve(r))
+      .catch( Error => reject(Error))
+    })
   }
   RunService(Service, Function, Params) {
-    this.$axios.$post(`/${this.Prefix}/runner/${Service.toLowerCase()}/${Function}`, Params )
-    .then( r => resolve(r))
-    .catch( Error => reject(Error))
+    return new Promise( (resolve, reject) => {
+      this.$axios.$post(`/${this.Prefix}/runner/${Service.toLowerCase()}/${Function}`, Params )
+      .then( r => resolve(r))
+      .catch( Error => reject(Error))
+    })
   }
   Schema() {
     return new Promise((resolve, reject) => {
-      this.$axios.$delete(`/${this.Prefix}/schema`)
+      this.$axios.$get(`/${this.Prefix}/schema`)
       .then( r => resolve(r))
       .catch( Error => reject(Error.response.data))
     })

@@ -162,7 +162,7 @@ Params: An object that matches the mongoose schema. The whole req.body should be
 ### /:model
 >Updates a document.
 * Method: PATCH
-* Returns: Object (mongodb document)
+* Returns: [WriteResults](https://docs.mongodb.com/manual/reference/method/db.collection.update/#writeresults-update)
 ```javascript
 axios.patch('/api/Book', MyUpdatedBook)
 ```
@@ -171,7 +171,7 @@ Params: A mongodb document that we modified. (ObjectID included)
 ### /:model/:id
 >Deletes a document.
 * Method: DELETE
-* Returns: Object (mongodb document)
+* Returns: [WriteResults](https://docs.mongodb.com/manual/reference/method/db.collection.update/#writeresults-update)
 ```javascript
 axios.delete('/api/Book/507f191e810c19729de860ea')
 ```
