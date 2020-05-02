@@ -180,6 +180,8 @@ axios.delete('/api/Book/507f191e810c19729de860ea')
 For this to work we need to create valid mongoose schemas, but we should add some extra things.
 No snake_case if you want protobuf!
 
+> Note protobuf can't use custom objects, but we can use refs instead.
+
 If the accesslevel number system means nothing to you go to the auth [section](#auth).
 
 | Param    |  Description                                                   | required |
