@@ -169,50 +169,39 @@
         }
       }
 
-      GetDeclinedReadFields(uId, model) {
+      GetDeclinedReadFields(accesslevel = 300, model) {
         return new Promise((resolve, reject) => {
-          if (uId === null) {
-            return resolve([]);
-          }
-          return mongoose.model('User').findOne({
-            _id: uId
-          }, (error, user) => {
-            return resolve(this.Schema[model].filter((field) => {
-              return field.minReadAuth !== void 0 && field.minReadAuth < user.accesslevel;
-            }).map((one) => {
-              return one.name;
-            }));
-          });
+          return resolve(this.Schema[model].filter((field) => {
+            return field.minReadAuth !== void 0 && field.minReadAuth < accesslevel;
+          }).map((one) => {
+            return one.name;
+          }));
         });
       }
 
-      GetDeclinedWriteFields(uId, model) {
+      GetDeclinedWriteFields(accesslevel = 300, model) {
         return new Promise((resolve, reject) => {
-          if (uId === null) {
+          var declinedFields;
+          declinedFields = this.Schema[model].filter((field) => {
+            return field.minWriteAuth !== void 0 && field.minWriteAuth < accesslevel;
+          });
+          if (declinedFields.filter((one) => {
+            return one.required;
+          }).length) {
             return resolve(null);
           }
-          return mongoose.model('User').findOne({
-            _id: uId
-          }, (error, user) => {
-            var declinedFields;
-            declinedFields = this.Schema[model].filter((field) => {
-              return field.minWriteAuth !== void 0 && field.minWriteAuth < user.accesslevel;
-            });
-            if (declinedFields.filter((one) => {
-              return one.required;
-            }).length) {
-              return resolve(null);
-            }
-            return resolve(declinedFields.map((one) => {
-              return one.name;
-            }));
-          });
+          return resolve(declinedFields.map((one) => {
+            return one.name;
+          }));
         });
       }
 
-      async GetProjection(uId, model, fields = [], include = false) {
+      async GetProjection(accesslevel, model, fields = [], include = true) {
         var projection;
         projection = {};
+        if (!fields.length) {
+          include = false;
+        }
         if (include) {
           this.Schema[model].map((one) => {
             if (!fields.includes(one.name)) {
@@ -224,8 +213,8 @@
             return projection[one] = 0;
           });
         }
-        ((await this.GetDeclinedReadFields(uId, model))).map((one) => {
-          return projection[one.name] = 0;
+        ((await this.GetDeclinedReadFields(accesslevel, model))).map((one) => {
+          return projection[one] = 0;
         });
         if (Object.keys(projection).length === 0) {
           return {
@@ -307,7 +296,7 @@
           }
           Headers = this.GetHeaders(req.params.model);
           MFunctions = this.Middlewares[req.params.model].R;
-          projection = (await this.GetProjection((req.user ? req.user._id : null), req.params.model));
+          projection = (await this.GetProjection(req.accesslevel, req.params.model));
           if (MFunctions.before && (await eval(MFunctions.before)) === true) {
             return;
           }
@@ -339,7 +328,7 @@
           }
           Headers = this.GetHeaders(req.params.model);
           MFunctions = this.Middlewares[req.params.model].R;
-          projection = (await this.GetProjection((req.user ? req.user._id : null), req.params.model));
+          projection = (await this.GetProjection(req.accesslevel, req.params.model));
           if (MFunctions.before && (await eval(MFunctions.before)) === true) {
             return;
           }
@@ -364,7 +353,7 @@
             req.query.sort = "{}";
           }
           MFunctions = this.Middlewares[req.params.model].R;
-          projection = (await this.GetProjection((req.user ? req.user._id : null), req.params.model, req.query.projection, false));
+          projection = (await this.GetProjection(req.accesslevel, req.params.model, req.query.projection));
           if (MFunctions.before && (await eval(MFunctions.before)) === true) {
             return;
           }
@@ -380,7 +369,7 @@
         Router.get("/:model/:id", async(req, res) => {
           var MFunctions, projection;
           MFunctions = this.Middlewares[req.params.model].R;
-          projection = (await this.GetProjection((req.user ? req.user._id : null), req.params.model, req.query.projection, false));
+          projection = (await this.GetProjection(req.accesslevel, req.params.model, req.query.projection));
           if (MFunctions.before && (await eval(MFunctions.before)) === true) {
             return;
           }
@@ -399,7 +388,7 @@
         Router.post("/:model", async(req, res) => {
           var MFunctions, Mod, declinedFields, results;
           MFunctions = this.Middlewares[req.params.model].C;
-          declinedFields = (await this.GetDeclinedWriteFields((req.user ? req.user._id : null), req.params.model));
+          declinedFields = (await this.GetDeclinedWriteFields(req.accesslevel, req.params.model));
           if (declinedFields === null) {
             return res.status(500).send('EPERM');
           }
@@ -424,7 +413,7 @@
         Router.patch("/:model", async(req, res) => {
           var MFunctions, declinedFields;
           MFunctions = this.Middlewares[req.params.model].U;
-          declinedFields = (await this.GetDeclinedWriteFields((req.user ? req.user._id : null), req.params.model));
+          declinedFields = (await this.GetDeclinedWriteFields(req.accesslevel, req.params.model));
           if (declinedFields === null) {
             return res.status(500).send('EPERM');
           }
@@ -449,7 +438,7 @@
         Router.delete("/:model/:id", async(req, res) => {
           var MFunctions, declinedFields;
           MFunctions = this.Middlewares[req.params.model].D;
-          declinedFields = (await this.GetDeclinedWriteFields((req.user ? req.user._id : null), req.params.model));
+          declinedFields = (await this.GetDeclinedWriteFields(req.accesslevel, req.params.model));
           if (declinedFields === null || declinedFields.length) {
             return res.status(500).send('EPERM');
           }

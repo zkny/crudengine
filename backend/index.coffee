@@ -131,29 +131,24 @@ class CrudEngine
         else 'string'
       else null
 
-  GetDeclinedReadFields: (uId, model) =>
+  GetDeclinedReadFields: (accesslevel = 300, model) =>
     return new Promise (resolve, reject) =>
-      if uId == null then return resolve []
+      resolve( @Schema[model].filter((field) => field.minReadAuth != undefined && field.minReadAuth < accesslevel).map((one) => one.name) )
 
-      mongoose.model('User').findOne {_id: uId}, (error, user) =>
-        resolve( @Schema[model].filter((field) => field.minReadAuth != undefined && field.minReadAuth < user.accesslevel).map((one) => one.name) )
-
-  GetDeclinedWriteFields: (uId, model) =>
+  GetDeclinedWriteFields: (accesslevel = 300, model) =>
     return new Promise (resolve, reject) =>
-      if uId == null then return resolve null
+      declinedFields = @Schema[model].filter((field) => field.minWriteAuth != undefined && field.minWriteAuth < accesslevel)
+      if declinedFields.filter((one) => one.required).length then return resolve(null)
+      resolve( declinedFields.map((one) => one.name) )
 
-      mongoose.model('User').findOne {_id: uId}, (error, user) =>
-        declinedFields = @Schema[model].filter((field) => field.minWriteAuth != undefined && field.minWriteAuth < user.accesslevel)
-        if declinedFields.filter((one) => one.required).length then return resolve(null)
-        resolve( declinedFields.map((one) => one.name) )
-
-  GetProjection: (uId, model, fields = [], include = false) =>
+  GetProjection: (accesslevel, model, fields = [], include = true) =>
     projection = {}
+    if !fields.length then include = false
 
     if include then @Schema[model].map (one) => if !fields.includes(one.name) then projection[one.name] = 0
     else fields.map (one) => projection[one] = 0
 
-    (await @GetDeclinedReadFields(uId, model)).map( (one) => projection[one.name] = 0 )
+    (await @GetDeclinedReadFields(accesslevel, model)).map( (one) => projection[one] = 0 )
 
     if Object.keys(projection).length == 0 then return { __v: 0 } else return projection
 
@@ -195,7 +190,7 @@ class CrudEngine
 
       Headers = @GetHeaders(req.params.model)
       MFunctions = @Middlewares[req.params.model].R
-      projection = await @GetProjection( (if req.user then req.user._id else null), req.params.model )
+      projection = await @GetProjection( req.accesslevel, req.params.model )
 
       if MFunctions.before and await eval(MFunctions.before) == true then return
       mongoose.model(req.params.model).find JSON.parse(req.query.filter), projection
@@ -221,7 +216,7 @@ class CrudEngine
 
       Headers = @GetHeaders(req.params.model)
       MFunctions = @Middlewares[req.params.model].R
-      projection = await @GetProjection( (if req.user then req.user._id else null), req.params.model )
+      projection = await @GetProjection( req.accesslevel, req.params.model )
 
       if MFunctions.before and await eval(MFunctions.before) == true then return
       mongoose.model(req.params.model).find JSON.parse(req.query.filter), projection
@@ -238,7 +233,7 @@ class CrudEngine
       if !req.query.sort then req.query.sort = "{}"
 
       MFunctions = @Middlewares[req.params.model].R
-      projection = await @GetProjection( (if req.user then req.user._id else null), req.params.model, req.query.projection, false )
+      projection = await @GetProjection( req.accesslevel, req.params.model, req.query.projection )
 
       if MFunctions.before and await eval(MFunctions.before) == true then return
       mongoose.model(req.params.model).find JSON.parse(req.query.filter), projection
@@ -252,7 +247,7 @@ class CrudEngine
 
     Router.get "/:model/:id", (req, res) =>
       MFunctions = @Middlewares[req.params.model].R
-      projection = await @GetProjection( (if req.user then req.user._id else null), req.params.model, req.query.projection, false )
+      projection = await @GetProjection( req.accesslevel, req.params.model, req.query.projection )
       if MFunctions.before and await eval(MFunctions.before) == true then return
       mongoose.model(req.params.model).findOne { _id: req.params.id }, projection, (error, results) =>
         if error then return res.status(500).send error
@@ -261,7 +256,7 @@ class CrudEngine
 
     Router.post "/:model", (req, res) =>
       MFunctions = @Middlewares[req.params.model].C
-      declinedFields = await @GetDeclinedWriteFields( (if req.user then req.user._id else null), req.params.model )
+      declinedFields = await @GetDeclinedWriteFields( req.accesslevel, req.params.model )
 
       if declinedFields == null then return res.status(500).send('EPERM')
       declinedFields.map (one) => delete req.body[one]
@@ -276,7 +271,7 @@ class CrudEngine
 
     Router.patch "/:model", (req, res) =>
       MFunctions = @Middlewares[req.params.model].U
-      declinedFields = await @GetDeclinedWriteFields( (if req.user then req.user._id else null), req.params.model )
+      declinedFields = await @GetDeclinedWriteFields( req.accesslevel, req.params.model )
 
       if declinedFields == null then return res.status(500).send('EPERM')
       declinedFields.map (one) => delete req.body[one]
@@ -289,7 +284,7 @@ class CrudEngine
 
     Router.delete "/:model/:id", (req, res) =>
       MFunctions = @Middlewares[req.params.model].D
-      declinedFields = await @GetDeclinedWriteFields( (if req.user then req.user._id else null), req.params.model )
+      declinedFields = await @GetDeclinedWriteFields( req.accesslevel, req.params.model )
 
       if declinedFields == null || declinedFields.length then return res.status(500).send('EPERM')
 

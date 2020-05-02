@@ -148,7 +148,7 @@ axios.get('/api/runner/userservice/deleteinactiveusers')
 params: whatever we send. See Services [section](#services) for more info!
 
 The difference between the two is just the method. With POST you can send data more easily and not get the results cached, with GET you can get the results cached.
-<a name="create"></a>read
+<a name="create"></a>
 ### /:model
 >Creates a new document.
 * Method: POST
@@ -317,7 +317,7 @@ If we want to decode the data crudengine serves the .proto file at /api/protofil
 
 <a name="auth"></a>
 ## Auth
-In this system we expect to have a user object added by a middleware to the req (as req.user), for authentication purposes. If we can't find it the accesslevel will be set to 300.
+In this system we expect to have the accesslevel number added by a middleware to the req (as req.accesslevel), for authentication purposes. If we can't find it the accesslevel will be set to 300.
 
 If we do find it, we can modify what the user who issues the request can see based on the access level. So if a field requires minReadAuth of 200 then a user with accesslevel of 300
 will get the field removed from the results. In case of update or create the minWriteAuth will rule. If there is a missmatch the request will fail with status 500 and a message saying 'EPERM'.
