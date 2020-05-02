@@ -119,7 +119,7 @@ export default class __API {
         }
       }).then( response => {
         const ProtoType = this.API.lookupType(`api.${this._capitalize(Model)}s`)
-        resolve( ProtoType.decode( new Uint8Array(response.data) ) )
+        resolve( ProtoType.decode( new Uint8Array(response.data))[`${this._capitalize(Model)}s`] )
       }).catch( Error => reject(Error))
     })
   }
