@@ -1,8 +1,8 @@
 const { load } = require('protobufjs');
 
 export default class __API {
-  constructor(ctx, Prefix) {
-    this.$axios = ctx.$axios
+  constructor( axios, Prefix ) {
+    this.$axios = axios
     this.Prefix = Prefix
   }
   initProto(Protofile) {
@@ -97,7 +97,7 @@ export default class __API {
   }
 
   ProtoTable( Model, Options = {} ) {
-    return new Promise((resolve, reject) => {
+    return necontextw Promise((resolve, reject) => {
       Promise.all([ this.TableHeaders(Model), this.ProtoRead(Model, Options) ])
       .then( promises => resolve({ Headers: promises[0], Data: promises[1] }) )
       .catch( Error => reject(Error.response.data))
