@@ -17,8 +17,7 @@ We intended vue-crudengine to be a plugin for nuxtjs but it can be used some oth
 import vueCrudengine from 'vue-crudengine'
 
 export default async ( ctx, inject ) => {
-  // give the nuxt context and the backend crudengine prefix to vue-crudengine
-  // constructor expects axios, backend crudengine prefix
+  // the constructor expects two parameters: axios, backend crudengine prefix
   const API = new vueCrudengine(ctx.$axios, 'api')
 
   // If we are planning to use protobuf
@@ -225,8 +224,8 @@ If we want to decode the data crudengine serves the .proto file at /api/protofil
 
 
 ## Authors
-Horváth Bálint
-Zákány Balázs
+* Horváth Bálint
+* Zákány Balázs
 
 ## Contributing
 Email us at <a href="mailto:balzs.zkny9@gmail.com">zkny</a> or <a href="horvbalint99@gmail.com">horvbalint</a>
