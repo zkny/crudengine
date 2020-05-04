@@ -1,6 +1,6 @@
 {
   "name": "vue-crudengine",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "description": "Crudengine frontend api plugin for vuejs",
   "main": "index.js",
   "scripts": {
@@ -12,5 +12,8 @@
     "crudengine"
   ],
   "author": "zkny",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "protobufjs": "^6.9.0"
+  }
 }
