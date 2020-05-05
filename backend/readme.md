@@ -24,6 +24,7 @@ schemas and services. Our schemas are basically the [mongoose models](https://mo
 * [Services](#services)
 * [About protobuf](#proto)
 * [Auth](#auth)
+* [Changle log](#change)
 
 <a name="install"></a>
 ## Getting started
@@ -323,6 +324,11 @@ In this system we expect to have the accesslevel number added by a middleware to
 
 If we do find it, we can modify what the user who issues the request can see based on the access level. So if a field requires minReadAuth of 200 then a user with accesslevel of 300
 will get the field removed from the results. In case of update or create the minWriteAuth will rule. If there is a missmatch the request will fail with status 500 and a message saying 'EPERM'.
+
+<a name="change"></a>
+## Changelog
+
+* 2020-05-05 Missing variable in .proto file when using Boolean fixed.
 
 ## Authors
 * Horváth Bálint

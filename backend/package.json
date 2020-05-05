@@ -1,6 +1,6 @@
 {
   "name": "crudengine",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "CRUD operation helper class for node.js + mongoose + express",
   "main": "index.js",
   "scripts": {
