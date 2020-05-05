@@ -8,7 +8,7 @@ const { load }     = require('protobufjs')
 const Router = express.Router()
 
 class CrudEngine {
-  
+
   constructor( SchemaDIR, ServiceDIR ) {
     this.Schema = {}
     this.Services = {}
@@ -23,7 +23,7 @@ class CrudEngine {
       const ServiceFileArray = fs.readdirSync( ServiceDIR )
       for( const ServiceFile of ServiceFileArray ) {
         if( ServiceFile == '.DS_Store' || ServiceFile.includes('.map') ) continue
-        
+
         const ServiceName = ServiceFile
           .replace( '.js', '' )
           .replace( '.ts', '' )
@@ -59,7 +59,7 @@ class CrudEngine {
               value.name = key
               subheaders.push(value)
             }
-  
+
           options.push({
             name: PropertyName,
             isArray: true,
@@ -141,6 +141,7 @@ class CrudEngine {
       case 'Number':  return 'float'
       case 'String':  return 'string'
       case 'Date':    return 'string'
+      case 'Boolean': return 'bool'
       case 'ObjectID':
         if(item.ref) return item.ref
         else return 'string'
