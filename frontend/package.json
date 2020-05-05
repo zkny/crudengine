@@ -1,10 +1,14 @@
 {
   "name": "vue-crudengine",
-  "version": "1.2.2",
+  "version": "1.2.4",
   "description": "Crudengine frontend api plugin for vuejs",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zkny/crudengine.git"
   },
   "keywords": [
     "vuejs",
