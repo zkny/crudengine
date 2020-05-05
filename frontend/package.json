@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "homepage": "https://zkny.github.io/crudengine/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zkny/crudengine.git"
