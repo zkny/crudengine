@@ -35,7 +35,7 @@ export default class __API {
     return new Promise((resolve, reject) => {
       this.$axios.$get(`/${this.Prefix}/schema`)
       .then( r => resolve(r))
-      .catch( Error => reject(Error.response.data))
+      .catch( Error => reject(Error))
     })
   }
   Read( Model, Options = {}) {
@@ -66,21 +66,21 @@ export default class __API {
     return new Promise((resolve, reject) => {
       this.$axios.$post(`/${this.Prefix}/${this._capitalize(Model)}`, Data)
       .then( r => resolve(r))
-      .catch( Error => reject(Error.response.data) )
+      .catch( Error => reject(Error) )
     })
   }
   Update( Model, Data ) {
     return new Promise((resolve, reject) => {
       this.$axios.$patch(`/${this.Prefix}/${this._capitalize(Model)}`, Data)
       .then( r => resolve(r))
-      .catch( Error => reject(Error.response.data))
+      .catch( Error => reject(Error))
     })
   }
   Delete( Model, Id ) {
     return new Promise((resolve, reject) => {
       this.$axios.$delete(`/${this.Prefix}/${this._capitalize(Model)}/${Id}`)
       .then( r => resolve(r))
-      .catch( Error => reject(Error.response.data))
+      .catch( Error => reject(Error))
     })
   }
 
@@ -88,7 +88,7 @@ export default class __API {
     return new Promise((resolve, reject) => {
       this.$axios.$get(`/${this.Prefix}/tableheaders/${this._capitalize(Model)}`)
       .then( r => resolve(r))
-      .catch( Error => reject(Error.response.data))
+      .catch( Error => reject(Error))
     })
   }
 
@@ -96,7 +96,7 @@ export default class __API {
     return new Promise((resolve, reject) => {
       Promise.all([ this.TableHeaders(Model), this.Read(Model, Options) ])
       .then( promises => resolve({ Headers: promises[0], Data: promises[1] }) )
-      .catch( Error => reject(Error.response.data))
+      .catch( Error => reject(Error))
     })
   }
 
@@ -104,7 +104,7 @@ export default class __API {
     return new Promise((resolve, reject) => {
       Promise.all([ this.TableHeaders(Model), this.ProtoRead(Model, Options) ])
       .then( promises => resolve({ Headers: promises[0], Data: promises[1] }) )
-      .catch( Error => reject(Error.response.data))
+      .catch( Error => reject(Error))
     })
   }
 
