@@ -25,6 +25,7 @@ schemas and services. Our schemas are basically the [mongoose models](https://mo
 * [About protobuf](#proto)
 * [Auth](#auth)
 * [Changle log](#change)
+* [TODO](#todo)
 
 <a name="install"></a>
 ## Getting started
@@ -330,6 +331,10 @@ will get the field removed from the results. In case of update or create the min
 
 * 2020-05-05 Missing variable in .proto file when using Boolean fixed.
 
+<a name="todo"></a>
+## TODO
+* add prerequisites
+
 ## Authors
 * Horváth Bálint
 * Zákány Balázs
@@ -337,5 +342,4 @@ will get the field removed from the results. In case of update or create the min
 ## Contributing
 Email us at <a href="mailto:balzs.zkny9@gmail.com">zkny</a> or <a href="mailto:horvbalint99@gmail.com">horvbalint</a>
 
-## Licence
-[MIT](https://opensource.org/licenses/MIT)
+or visit the [github page](https://github.com/zkny/crudengine)

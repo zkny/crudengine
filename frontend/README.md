@@ -229,6 +229,4 @@ If we want to decode the data crudengine serves the .proto file at /api/protofil
 
 ## Contributing
 Email us at <a href="mailto:balzs.zkny9@gmail.com">zkny</a> or <a href="horvbalint99@gmail.com">horvbalint</a>
-
-## Licence
-[MIT](https://opensource.org/licenses/MIT)
+or visit the [github page](https://github.com/zkny/crudengine)
