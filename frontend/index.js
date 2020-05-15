@@ -63,10 +63,65 @@ export default class __API {
     })
   }
   Create( Model, Data ) {
-    return new Promise((resolve, reject) => {
+    return new Promise( async (resolve, reject) => {
+      let promises = []
+
+      this.getFileKeys(Data, promises)
+      let uploadedFiles = await Promise.all(promises)
+      this.setFileFields(Data, uploadedFiles)
+      
       this.$axios.$post(`/${this.Prefix}/${this._capitalize(Model)}`, Data)
-      .then( r => resolve(r))
-      .catch( Error => reject(Error) )
+        .then( r => resolve(r))
+        .catch( async Error => {
+          promises = []
+
+          for(let file of uploadedFiles)
+            promises.push( this.DeleteFile(file.path) )
+
+          await Promise.all(promises)
+          reject(Error)
+        })
+    })
+  }
+  setFileFields(object, results) {
+    for( let key in object) {
+      if( typeof object[key] == 'object' ) 
+        this.setFileFields(object[key], results)
+
+      if( object[key] instanceof File )
+        object[key] = results.shift().path
+    }
+  }
+  getFileKeys(object, promises) {
+    for( let key in object) {
+      if( typeof object[key] == 'object' ) 
+        this.getFileKeys(object[key], promises)
+
+      if( object[key] instanceof File )
+        promises.push(this.UploadFile(object[key]))
+    }
+  }
+  UploadFile( File ) {
+    return new Promise((resolve, reject) => {
+      let formData = new FormData()
+
+      formData.append('file', File)
+      this.$axios.$post(`/${this.Prefix}/fileupload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+        .then( r => resolve(r))
+        .catch( Error => reject(Error) )
+    })
+  }
+  DeleteFile( FilePath ) {
+    return new Promise((resolve, reject) => {
+      this.$axios.$delete(`/${this.Prefix}/filedelete`, {
+        data: {
+          path: FilePath
+        }
+      })
+        .then( r => resolve(r) )
+        .catch( Error => reject(Error) )
     })
   }
   Update( Model, Data ) {

@@ -1,22 +1,32 @@
-const express      = require('express')
-const mongoose     = require('mongoose')
-const autopopulate = require('mongoose-autopopulate')
-const fs           = require('fs')
-const path         = require('path')
-const { load }     = require('protobufjs')
+const express       = require('express')
+const mongoose      = require('mongoose')
+const autopopulate  = require('mongoose-autopopulate')
+const fs            = require('fs')
+const path          = require('path')
+const { load }      = require('protobufjs')
+const multer        = require('multer')
+const sharp         = require('sharp')
 
 const Router = express.Router()
 
 class CrudEngine {
 
-  constructor( SchemaDIR, ServiceDIR ) {
-    this.Schema = {}
-    this.Services = {}
-    this.Models = {}
-    this.Middlewares = {}
-    this.Operations = ['C', 'R', 'U', 'D']
-    this.Timings = ['after', 'before']
-    this.API = false
+  constructor({SchemaDIR, ServiceDIR, FileDIR = null, ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250}) {
+    this.Schema           = {}
+    this.Services         = {}
+    this.Models           = {}
+    this.Middlewares      = {}
+    this.Operations       = ['C', 'R', 'U', 'D']
+    this.Timings          = ['after', 'before']
+    this.ImageHeightSize  = ImageHeightSize
+    this.Thumbnail        = Thumbnail
+    this.ThumbnailSize    = ThumbnailSize
+    this.FileDIR          = FileDIR
+    this.API              = false
+
+    if (FileDIR && !fs.existsSync(FileDIR)) fs.mkdirSync(path.resolve(FileDIR), { recursive: true })
+
+    this.upload = multer({ dest: FileDIR })
 
     const SchemaFileArray = fs.readdirSync(SchemaDIR)
     if( ServiceDIR ) {
@@ -27,7 +37,7 @@ class CrudEngine {
         const ServiceName = ServiceFile
           .replace( '.js', '' )
           .replace( '.ts', '' )
-          .replace( 'coffee', '' )
+          .replace( '.coffee', '' )
 
         this.Services[ServiceName] = require(`${ServiceDIR}/${ServiceFile}`)
       }
@@ -39,7 +49,7 @@ class CrudEngine {
       const SchemaName = SchemaFile
         .replace( '.js', '' )
         .replace( '.ts', '' )
-        .replace( 'coffee', '' )
+        .replace( '.coffee', '' )
 
       let tmp = require(`${SchemaDIR}/${SchemaFile}`)
       let options = []
@@ -51,7 +61,7 @@ class CrudEngine {
       for( const PropertyName in schema.paths ) {
         const PropertyDescription = schema.paths[PropertyName]
 
-        if( PropertyDescription.instance == 'Array' ) {
+        if( PropertyDescription.instance == 'Array' && PropertyDescription.caster.instance == 'ObjectID') {
           let subheaders = []
           if( !PropertyDescription.options.ref && !PropertyDescription.caster.options.ref )
             for( let key of PropertyDescription.options.type[0] ) {
@@ -298,6 +308,29 @@ class CrudEngine {
       })
     })
 
+    Router.post( "/fileupload", this.upload.single('file'), (req, res) => {
+      if(req.file.mimetype.split('/')[0] == 'image') return this.handleImageUpload(req, res)
+
+      let extension   = req.file.originalname.split('.').pop()
+      let filePath    = `${req.file.path}.${extension}`
+      let staticPath  = `/static/${req.file.filename}.${extension}`
+
+      fs.renameSync(req.file.path, filePath)
+      res.send({originalname: req.path.originalname, path: staticPath})
+    })
+
+    Router.delete( "/filedelete", (req, res) => {
+      let realPath = path.resolve( this.FileDIR, req.body.path.split('/static/')[1] )
+
+      if(realPath.indexOf(this.FileDIR) != 0) return res.status(500).send('Invalid file path!')
+
+      fs.unlinkSync(realPath)
+      let filePath = realPath.replace('.', '_thumbnail.')
+      if(fs.existsSync(filePath)) fs.unlinkSync(filePath)
+
+      res.send()
+    })
+
     Router.post( "/:model", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].C
       const declinedFields = await this.GetDeclinedWriteFields( req.accesslevel, req.params.model )
@@ -345,6 +378,39 @@ class CrudEngine {
     })
 
     return Router
+  }
+
+  handleImageUpload(req, res) {
+    let extension     = req.file.originalname.split('.').pop()
+    let filePath      = `${req.file.path}.${extension}`
+    let staticPath    = `/static/${req.file.filename}.${extension}`
+    let origPath      = req.file.path
+    let originalname  = req.file.originalname
+
+    sharp(req.file.path)
+    .resize({
+      height: this.ImageHeightSize,
+      withoutEnlargement: true
+    })
+    .toFile(filePath, (err, info) => {
+      if(err) return res.send(err)
+
+      fs.unlinkSync(origPath)
+      if(this.Thumbnail) {
+        return sharp(filePath)
+        .resize({
+          height: this.ThumbnailSize,
+          withoutEnlargement: true
+        })
+        .toFile(`${origPath}_thumbnail.${extension}`, (err, th_info) => {
+          if(err) return res.send(err)
+
+          res.send({originalname, path: staticPath, compressedSize: info.size})
+        })
+      }
+      
+      res.send({originalname, path: staticPath, compressedSize: info.size})
+    })
   }
 
   addMiddleware( modelname, operation, timing, middlewareFunction ) {
