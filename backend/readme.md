@@ -168,10 +168,10 @@ axios.post('/api/Book', MyNewBook)
 Params: An object that matches the mongoose schema. The whole req.body should be the object
 
 ### /:fileupload
->Upload the given file, and generates a unique name for it. We must send the file as multiplart formdata.
+>Uploads a given file, and generates a unique name for it. We must send the file as multiplart formdata.
 Will create thumbnail for images, if Thumbnail is set to true in the options. Thumbnail names will be like IGaveThisFileAName_thumbnail.jpg.
 * Method: POST
-* Returns: { path '/static/fileUniqueName.jpg', originalname: 'IGaveThisFileAName.jpg' }
+* Returns: { path: '/static/fileUniqueName.jpg', originalname: 'IGaveThisFileAName.jpg' }
 ```js
 
 let formData = new FormData()
@@ -201,7 +201,7 @@ axios.delete('/api/Book/507f191e810c19729de860ea')
 ```
 
 ### /filedelete
->Deletes a file at the specified path. Crudengine will not allow deleting files outside its static folder. If there is, deletes the thumbnail as well.
+>Deletes a file at a specified path. Crudengine will not allow deleting files outside its static folder. If there is, deletes the thumbnail as well.
 * Method: DELETE
 * Returns: empty response
 ```js
