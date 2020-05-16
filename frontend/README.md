@@ -142,7 +142,8 @@ Params: whatever we send. See Services [section](#services) for more info!
 The difference between the two is just the method. With POST you can send data more easily and not get the results cached, with GET you can get the results cached.
 <a name="create"></a>
 ### Create
->Creates a new document in database.
+>Creates a new document in database. If the DocumentObject contains a file it will be uploaded, then the file will be replaced with
+the file path.
 * Method: POST
 * Resolves into: Object (mongodb document)
 ```javascript
@@ -151,6 +152,16 @@ this.$API.Create( ModelName, DocumentObject )
 .catch( Error => ... )
 ```
 DocumentObject: An object that matches the mongoose schema.
+
+### UploadFile
+>Uploads a given file.
+* Method: POST
+* Resolves into: { path: '/static/myFilesUniqueName.pdf', originalname: "IGaveThisFileAName.pdf" }
+```javascript
+this.$API.UploadFile( MyFile )
+.then( Response => ... )
+.catch( Error => ... )
+```
 
 <a name="update"></a>
 ### Update
@@ -171,6 +182,16 @@ DocumentObject: A mongodb document that we modified. (ObjectID included)
 ```javascript
 this.$API.Delete( ModelName, Id )
 .then( Document => ... )
+.catch( Error => ... )
+```
+
+### DeleteFile
+>Deletes a file on a given path. Only paths, that are inside the /api/static folder will be accepted. If there is, deletes thumbnail as well.
+* Method: DELETE
+* Resolves into: Empty response
+```javascript
+this.$API.DeleteFile( PathToMyFile )
+.then( EmptyResponse => ... )
 .catch( Error => ... )
 ```
 
