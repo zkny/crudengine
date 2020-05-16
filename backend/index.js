@@ -214,7 +214,36 @@ class CrudEngine {
   GenerateRoutes() {
     Router.get( '/schema', (req, res) => res.send(this.Schema) )
 
-    // Generate the crud routes for each model
+
+    // Static routes at the front, so we can't overwrite it with a schema route
+    Router.use( '/protofile', express.static(path.resolve(__dirname, './api.proto')) )
+
+    Router.use( '/static', express.static(path.resolve(__dirname, this.FileDIR)) )
+
+    Router.post( "/fileupload", this.upload.single('file'), (req, res) => {
+      if(req.file.mimetype.split('/')[0] == 'image') return this.handleImageUpload(req, res)
+
+      let extension   = req.file.originalname.split('.').pop()
+      let filePath    = `${req.file.path}.${extension}`
+      let staticPath  = `/static/${req.file.filename}.${extension}`
+
+      fs.renameSync(req.file.path, filePath)
+      res.send({originalname: req.path.originalname, path: staticPath})
+    })
+
+    Router.delete( "/filedelete", (req, res) => {
+      let realPath = path.resolve( this.FileDIR, req.body.path.split('/static/')[1] )
+
+      if(realPath.indexOf(this.FileDIR) != 0) return res.status(500).send('Invalid file path!')
+
+      fs.unlinkSync(realPath)
+      let filePath = realPath.replace('.', '_thumbnail.')
+      if(fs.existsSync(filePath)) fs.unlinkSync(filePath)
+
+      res.send()
+    })
+
+    // Register service routes
     Router.get( '/getter/:service/:fun', (req, res) =>
       this.Services[req.params.service][req.params.fun]
         .call( null, { params: req.query } )
@@ -229,8 +258,7 @@ class CrudEngine {
         .catch( error => res.status(500).send(error) )
     )
 
-    Router.use( '/protofile', express.static(path.resolve(__dirname, './api.proto')) )
-
+    // Generate the crud routes for each model
     Router.get( '/proto/:model', async (req, res) => {
       if(!req.query.filter) req.query.filter = "{}"
       if(!req.query.sort) req.query.sort = "{}"
@@ -306,29 +334,6 @@ class CrudEngine {
         if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
         res.send(results)
       })
-    })
-
-    Router.post( "/fileupload", this.upload.single('file'), (req, res) => {
-      if(req.file.mimetype.split('/')[0] == 'image') return this.handleImageUpload(req, res)
-
-      let extension   = req.file.originalname.split('.').pop()
-      let filePath    = `${req.file.path}.${extension}`
-      let staticPath  = `/static/${req.file.filename}.${extension}`
-
-      fs.renameSync(req.file.path, filePath)
-      res.send({originalname: req.path.originalname, path: staticPath})
-    })
-
-    Router.delete( "/filedelete", (req, res) => {
-      let realPath = path.resolve( this.FileDIR, req.body.path.split('/static/')[1] )
-
-      if(realPath.indexOf(this.FileDIR) != 0) return res.status(500).send('Invalid file path!')
-
-      fs.unlinkSync(realPath)
-      let filePath = realPath.replace('.', '_thumbnail.')
-      if(fs.existsSync(filePath)) fs.unlinkSync(filePath)
-
-      res.send()
     })
 
     Router.post( "/:model", async (req, res) => {
@@ -408,7 +413,7 @@ class CrudEngine {
           res.send({originalname, path: staticPath, compressedSize: info.size})
         })
       }
-      
+
       res.send({originalname, path: staticPath, compressedSize: info.size})
     })
   }

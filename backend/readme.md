@@ -32,7 +32,14 @@ schemas and services. Our schemas are basically the [mongoose models](https://mo
 ```javascript
 const crudengine = require("crudengine");
 
-const crud = new crudengine(path.resolve(__dirname, './schemas'), path.resolve(__dirname, './services')); // create the instance
+const crud = new crudengine({
+  SchemaDIR: path.resolve(__dirname, './schemas'),
+  ServiceDIR: path.resolve(__dirname, './services'),
+  FileDIR: path.resolve(__dirname, './files'), // [Optional] this will become the /static folder for crudengine
+  ImageHeightSize: 1500, // [Optional] Image compression to given size, defaults to 800
+  Thumbnail: false, // [Optional] Automatically save a thumbnail version for images, defaults to false
+  ThumbnailSize: 500 // [Optional] Thumbnail compression to given size, defaults to 250
+}); // create the instance
 
 Router.use(someGenericAuthMiddlware) // no auth, no data
 
@@ -160,6 +167,21 @@ axios.post('/api/Book', MyNewBook)
 ```
 Params: An object that matches the mongoose schema. The whole req.body should be the object
 
+### /:fileupload
+>Upload the given file, and generates a unique name for it. We must send the file as multiplart formdata.
+Will create thumbnail for images, if Thumbnail is set to true in the options. Thumbnail names will be like IGaveThisFileAName_thumbnail.jpg.
+* Method: POST
+* Returns: { path '/static/fileUniqueName.jpg', originalname: 'IGaveThisFileAName.jpg' }
+```js
+
+let formData = new FormData()
+formData.append('file', MyFile)
+
+axios.post(`/api/fileupload`, formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+})
+```
+
 <a name="update"></a>
 ### /:model
 >Updates a document.
@@ -177,6 +199,19 @@ Params: A mongodb document that we modified. (ObjectID included)
 ```javascript
 axios.delete('/api/Book/507f191e810c19729de860ea')
 ```
+
+### /filedelete
+>Deletes a file at the specified path. Crudengine will not allow deleting files outside its static folder. If there is, deletes the thumbnail as well.
+* Method: DELETE
+* Returns: empty response
+```js
+axios.delete(`/api/filedelete`, {
+  data: {
+    path: '/static/myFilesUniqueName.jpg'
+  }
+})
+```
+
 <a name="schemas"></a>
 ## Schemas
 For this to work we need to create valid mongoose schemas, but we should add some extra things.
