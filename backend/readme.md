@@ -34,11 +34,12 @@ const crudengine = require("crudengine");
 
 const crud = new crudengine({
   SchemaDIR: path.resolve(__dirname, './schemas'),
-  ServiceDIR: path.resolve(__dirname, './services'),
-  FileDIR: path.resolve(__dirname, './files'), // [Optional] this will become the /static folder for crudengine
+  ServiceDIR: path.resolve(__dirname, './services'), // [Optional] Services should be in this folder, if needed
+  FileDIR: path.resolve(__dirname, './files'), // [Optional] This will become the /static folder for crudengine
   ImageHeightSize: 1500, // [Optional] Image compression to given size, defaults to 800
   Thumbnail: false, // [Optional] Automatically save a thumbnail version for images, defaults to false
   ThumbnailSize: 500 // [Optional] Thumbnail compression to given size, defaults to 250
+  MaxHeaderDepth: 3 // [Optional] Table headers will be traced till this depth recursively (default = 3)
 }); // create the instance
 
 Router.use(someGenericAuthMiddlware) // no auth, no data

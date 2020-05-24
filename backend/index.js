@@ -1,20 +1,19 @@
 const express       = require('express')
 const mongoose      = require('mongoose')
-const autopopulate  = require('mongoose-autopopulate')
 const fs            = require('fs')
 const path          = require('path')
 const { load }      = require('protobufjs')
 const multer        = require('multer')
 const sharp         = require('sharp')
+const CRUDFile      = require('./schemas/CRUDFile')
 
 const Router = express.Router()
 
 class CrudEngine {
 
-  constructor({SchemaDIR, ServiceDIR, FileDIR = null, ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250}) {
+  constructor({SchemaDIR, ServiceDIR = null, FileDIR = null, ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 3}) {
     this.Schema           = {}
     this.Services         = {}
-    this.Models           = {}
     this.Middlewares      = {}
     this.Operations       = ['C', 'R', 'U', 'D']
     this.Timings          = ['after', 'before']
@@ -22,85 +21,41 @@ class CrudEngine {
     this.Thumbnail        = Thumbnail
     this.ThumbnailSize    = ThumbnailSize
     this.FileDIR          = FileDIR
+    this.SchemaDIR        = SchemaDIR
+    this.ServiceDIR       = ServiceDIR
     this.API              = false
+    this.MaxHeaderDepth   = MaxHeaderDepth
 
-    if (FileDIR && !fs.existsSync(FileDIR)) fs.mkdirSync(path.resolve(FileDIR), { recursive: true })
+    if (FileDIR) {
+      if(!fs.existsSync(FileDIR))
+        fs.mkdirSync(path.resolve(FileDIR), { recursive: true })
 
-    this.upload = multer({ dest: FileDIR })
+      this.upload = multer({ dest: FileDIR })
+    }
 
-    const SchemaFileArray = fs.readdirSync(SchemaDIR)
     if( ServiceDIR ) {
       const ServiceFileArray = fs.readdirSync( ServiceDIR )
       for( const ServiceFile of ServiceFileArray ) {
         if( ServiceFile == '.DS_Store' || ServiceFile.includes('.map') ) continue
-
+        
         const ServiceName = ServiceFile
-          .replace( '.js', '' )
-          .replace( '.ts', '' )
-          .replace( '.coffee', '' )
-
-        this.Services[ServiceName] = require(`${ServiceDIR}/${ServiceFile}`)
-      }
-    }
-
-    for( const SchemaFile of SchemaFileArray ) {
-      if( SchemaFile == '.DS_Store' || SchemaFile.includes('.map') ) continue
-
-      const SchemaName = SchemaFile
         .replace( '.js', '' )
         .replace( '.ts', '' )
         .replace( '.coffee', '' )
-
-      let tmp = require(`${SchemaDIR}/${SchemaFile}`)
-      let options = []
-
-      let schema = tmp.schema || tmp.default.schema
-      let model = tmp.model || tmp.default.model
-      let modelname = tmp.modelName || tmp.default.modelName
-
-      for( const PropertyName in schema.paths ) {
-        const PropertyDescription = schema.paths[PropertyName]
-
-        if( PropertyDescription.instance == 'Array' && PropertyDescription.caster.instance == 'ObjectID') {
-          let subheaders = []
-          if( !PropertyDescription.options.ref && !PropertyDescription.caster.options.ref )
-            for( let key of PropertyDescription.options.type[0] ) {
-              let value = PropertyDescription.options.type[0][key]
-              value.name = key
-              subheaders.push(value)
-            }
-
-          options.push({
-            name: PropertyName,
-            isArray: true,
-            type: PropertyDescription.caster.instance,
-            subheaders: subheaders,
-            required: PropertyDescription.isRequired || false,
-            ref: PropertyDescription.options.ref || PropertyDescription.caster.options.ref || null,
-            alias: PropertyDescription.options.alias || PropertyDescription.caster.options.alias || null,
-            description: PropertyDescription.options.description || PropertyDescription.caster.options.description || null,
-            default: PropertyDescription.defaultValue || PropertyDescription.caster.defaultValue || null,
-            minReadAuth: PropertyDescription.options.minReadAuth || PropertyDescription.caster.options.minReadAuth || 300,
-            minWriteAuth: PropertyDescription.options.minWriteAuth || PropertyDescription.caster.options.minWriteAuth || 300,
-          })
-        }
-        else {
-          options.push({
-            name: PropertyName,
-            isArray: false,
-            type: PropertyDescription.instance,
-            required: PropertyDescription.isRequired || false,
-            ref: PropertyDescription.options.ref || null,
-            alias: PropertyDescription.options.alias || null,
-            description: PropertyDescription.options.description || null,
-            default: PropertyDescription.defaultValue || null,
-            minReadAuth: PropertyDescription.options.minReadAuth || 300,
-            minWriteAuth: PropertyDescription.options.minWriteAuth || 300,
-          })
-        }
+        
+        this.Services[ServiceName] = require(`${ServiceDIR}/${ServiceFile}`)
       }
-      this.Schema[modelname] = options
-      this.Models[modelname] = model
+    }
+    
+    let rawSchemas = {}
+    
+    for( const SchemaFile of fs.readdirSync(SchemaDIR) ) {
+      if( SchemaFile == '.DS_Store' || SchemaFile.includes('.map') ) continue
+
+      let schemaObj = require(`${SchemaDIR}/${SchemaFile}`)
+      let modelname = schemaObj.modelName || schemaObj.default.modelName
+
+      rawSchemas[modelname] = schemaObj
       this.Middlewares[modelname] = {
         C: {},
         R: {},
@@ -109,18 +64,64 @@ class CrudEngine {
       }
     }
 
-    // plug in ref schemas
-    for( const ModelName in this.Schema )
-      for( let [index, item] of this.Schema[ModelName].entries() ) {
-        if( item.ref )
-          this.Schema[ModelName][index].subheaders = this.Schema[item.ref]
-      }
-
+    this.GenerateSchemas(rawSchemas)
     this.GenerateProto()
 
     load( path.resolve(__dirname, './api.proto'), (error, api) => {
       if(!error) this.API = api
     })
+  }
+
+  GenerateSchemas(RawSchemas) {
+    for( let modelName in RawSchemas )
+      this.Schema[modelName] = this.GenerateSchema(RawSchemas, RawSchemas[modelName].schema.obj)
+  }
+
+  GenerateSchema( RawSchemas, schema, depth = 0 ) {
+    let fields = []
+
+    for( const FieldName in schema ) {
+      let FieldObj = schema[FieldName]
+      
+      let isArray = Array.isArray(FieldObj.type)
+      if( Array.isArray(FieldObj) ) {
+        isArray = true
+        FieldObj = FieldObj[0] 
+      }
+      
+      let fieldType = 'Object'
+      if(FieldObj.type) {
+        if(FieldObj.type.name) fieldType = FieldObj.type.name
+        if(FieldObj.type[0] && FieldObj.type[0].type ) fieldType = FieldObj.type[0].type.name
+      }
+
+      let field = {
+        name: FieldName,
+        isArray: isArray,
+        type: fieldType,
+        required: FieldObj.required || false,
+        ref: FieldObj.ref || null,
+        alias: FieldObj.alias || null,
+        description: FieldObj.description || null,
+        default: FieldObj.default || null,
+        minReadAuth: FieldObj.minReadAuth || 300,
+        minWriteAuth: FieldObj.minWriteAuth || 300,
+      }
+
+      if((field.ref || field.isArray || field.type == 'Object') && depth < this.MaxHeaderDepth) {
+        let subObj = null
+        
+        if(field.ref) subObj = field.ref == 'CRUDFile' ? CRUDFile.schema.obj : RawSchemas[field.ref].schema.obj
+        else if(field.isArray) subObj = FieldObj.type[0]
+        else if(field.type == 'Object') subObj = FieldObj
+
+        field.subheaders = this.GenerateSchema(RawSchemas, subObj, depth+1)
+      }
+
+      fields.push(field)
+    }
+
+    return fields
   }
 
   GenerateProto() {
@@ -193,57 +194,34 @@ class CrudEngine {
   }
 
   GetHeaders( model ) {
-    const Headers = [] // { name, key, subheaders }
+    if(typeof model == 'string')
+      model = JSON.parse(JSON.stringify(this.Schema[model]))
 
-    for( let item of this.Schema[model] ) {
-      if(!item.alias) continue
+    for( let field of model ) {
+      field.key = field.name
+      field.name = field.alias
 
-      if( !item.isArray && !item.ref )
-        Headers.push({ name: item.alias, key: item.name, description: item.description })
-      else {
-        let subheaders = []
-        for( let subitem of item.subheaders )
-          subheaders.push({ name: subitem.alias, key: subitem.name, description: subitem.description })
-        Headers.push({ name: item.alias, key: item.name, description: item.description, subheaders: subheaders })
+      for(let key in field) {
+        if( !['key', 'name', 'description', 'subheaders'].some(k => k == key) )
+          delete field[key]
       }
+
+      if(field.subheaders)
+        this.GetHeaders(field.subheaders)
     }
 
-    return Headers
+    return model
   }
 
   GenerateRoutes() {
-    Router.get( '/schema', (req, res) => res.send(this.Schema) )
-
-
-    // Static routes at the front, so we can't overwrite it with a schema route
     Router.use( '/protofile', express.static(path.resolve(__dirname, './api.proto')) )
 
-    Router.use( '/static', express.static(path.resolve(__dirname, this.FileDIR)) )
+    if(this.FileDIR)
+      Router.use( '/static', express.static(path.resolve(__dirname, this.FileDIR)) )
 
-    Router.post( "/fileupload", this.upload.single('file'), (req, res) => {
-      if(req.file.mimetype.split('/')[0] == 'image') return this.handleImageUpload(req, res)
+    Router.get( '/schema', (req, res) => res.send(this.Schema) )
 
-      let extension   = req.file.originalname.split('.').pop()
-      let filePath    = `${req.file.path}.${extension}`
-      let staticPath  = `/static/${req.file.filename}.${extension}`
-
-      fs.renameSync(req.file.path, filePath)
-      res.send({originalname: req.path.originalname, path: staticPath})
-    })
-
-    Router.delete( "/filedelete", (req, res) => {
-      let realPath = path.resolve( this.FileDIR, req.body.path.split('/static/')[1] )
-
-      if(realPath.indexOf(this.FileDIR) != 0) return res.status(500).send('Invalid file path!')
-
-      fs.unlinkSync(realPath)
-      let filePath = realPath.replace('.', '_thumbnail.')
-      if(fs.existsSync(filePath)) fs.unlinkSync(filePath)
-
-      res.send()
-    })
-
-    // Register service routes
+    // Generate the crud routes for each model
     Router.get( '/getter/:service/:fun', (req, res) =>
       this.Services[req.params.service][req.params.fun]
         .call( null, { params: req.query } )
@@ -258,7 +236,6 @@ class CrudEngine {
         .catch( error => res.status(500).send(error) )
     )
 
-    // Generate the crud routes for each model
     Router.get( '/proto/:model', async (req, res) => {
       if(!req.query.filter) req.query.filter = "{}"
       if(!req.query.sort) req.query.sort = "{}"
@@ -336,6 +313,47 @@ class CrudEngine {
       })
     })
 
+    if(this.FileDIR) {
+      Router.post( "/fileupload", this.upload.single('file'), (req, res) => {
+        if(req.file.mimetype.split('/')[0] == 'image') return this.handleImageUpload(req, res)
+    
+        let file          = JSON.parse(JSON.stringify(req.file))
+        let extension     = file.originalname.split('.').pop()
+        let filePath      = `${file.path}.${extension}`
+        let staticPath    = `/static/${file.filename}.${extension}`
+    
+        fs.renameSync(req.file.path, filePath)
+    
+        let fileData = {
+          name: file.originalname,
+          path: staticPath,
+          size: file.size,
+          extension: extension,
+        }
+        CRUDFile.create(fileData, (err, file) => {
+          if(err) res.status(500).send(err)
+          else res.send(file)
+        })
+      })
+    
+      Router.delete( "/filedelete", (req, res) => {
+        CRUDFile.findOne({_id: req.body._id})
+          .then( file => {
+            let realPath = path.resolve( this.FileDIR, file.path.split('/static/')[1] )
+            if(realPath.indexOf(this.FileDIR) != 0) return res.status(500).send('Invalid file path!')
+      
+            fs.unlinkSync(realPath)
+            let thumbnailPath = realPath.replace('.', '_thumbnail.')
+            if(fs.existsSync(thumbnailPath)) fs.unlinkSync(thumbnailPath)
+    
+            CRUDFile.deleteOne({_id: file._id})
+              .then( () => res.send() )
+              .catch( err => res.status(500).send(err) )
+          })
+          .catch( err => res.status(500).send(err) )
+      })
+    }
+
     Router.post( "/:model", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].C
       const declinedFields = await this.GetDeclinedWriteFields( req.accesslevel, req.params.model )
@@ -386,11 +404,10 @@ class CrudEngine {
   }
 
   handleImageUpload(req, res) {
-    let extension     = req.file.originalname.split('.').pop()
-    let filePath      = `${req.file.path}.${extension}`
-    let staticPath    = `/static/${req.file.filename}.${extension}`
-    let origPath      = req.file.path
-    let originalname  = req.file.originalname
+    let file          = JSON.parse(JSON.stringify(req.file))
+    let extension     = file.originalname.split('.').pop()
+    let filePath      = `${file.path}.${extension}`
+    let staticPath    = `/static/${file.filename}.${extension}`
 
     sharp(req.file.path)
     .resize({
@@ -400,21 +417,37 @@ class CrudEngine {
     .toFile(filePath, (err, info) => {
       if(err) return res.send(err)
 
-      fs.unlinkSync(origPath)
+      fs.unlinkSync(file.path)
+
+      let fileData = {
+        name: file.originalname,
+        path: staticPath,
+        size: file.size,
+        extension: extension,
+        isImage: true
+      }
+
       if(this.Thumbnail) {
         return sharp(filePath)
         .resize({
           height: this.ThumbnailSize,
           withoutEnlargement: true
         })
-        .toFile(`${origPath}_thumbnail.${extension}`, (err, th_info) => {
+        .toFile(`${file.path}_thumbnail.${extension}`, (err, th_info) => {
           if(err) return res.send(err)
 
-          res.send({originalname, path: staticPath, compressedSize: info.size})
+          fileData.thumbnailPath = `/static/${file.filename}_thumbnail.${extension}`
+          CRUDFile.create(fileData, (err, file) => {
+            if(err) res.status(500).send(err)
+            else res.send(file)
+          })
         })
       }
-
-      res.send({originalname, path: staticPath, compressedSize: info.size})
+      
+      CRUDFile.create(fileData, (err, file) => {
+        if(err) res.status(500).send(err)
+        else res.send(file)
+      })
     })
   }
 

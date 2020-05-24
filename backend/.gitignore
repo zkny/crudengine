@@ -1,5 +1,4 @@
 node_modules
-schemas
 api_template.proto
 api.proto
 package-lock.json
