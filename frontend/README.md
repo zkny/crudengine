@@ -1,4 +1,3 @@
-
 ## Vue-crudengine
 
 > Crudengine is a program to help us to get rid of boilerplate programing. This package is a wrapper for crudengine, so we don't have to write http calls, but neet little functions, that are much easier to remember and read. This package is meant to be used in pair with the [crudengine](https://www.npmjs.com/package/crudengine).
@@ -142,8 +141,7 @@ Params: whatever we send. See Services [section](#services) for more info!
 The difference between the two is just the method. With POST you can send data more easily and not get the results cached, with GET you can get the results cached.
 <a name="create"></a>
 ### Create
->Creates a new document in database. If the DocumentObject contains a file it will be uploaded, then the file will be replaced with
-the file path.
+>Creates a new document in database. If the DocumentObject contains a file it will be uploaded, then the file will be replaced with the file path.
 * Method: POST
 * Resolves into: Object (mongodb document)
 ```javascript
@@ -165,7 +163,7 @@ this.$API.UploadFile( MyFile )
 
 <a name="update"></a>
 ### Update
->Updates a document in database.
+>Updates a document in database. If there is a file in the object, crudengine will upload it, but will not delete the previous file.
 * Method: PATCH
 * Resolves into: [WriteResults](https://docs.mongodb.com/manual/reference/method/db.collection.update/#writeresults-update)
 ```javascript
@@ -176,7 +174,7 @@ this.$API.Update( ModelName, DocumentObject )
 DocumentObject: A mongodb document that we modified. (ObjectID included)
 <a name="delete"></a>
 ### Delete
->Deletes a document from database.
+>Deletes a document from database. Files will not be deleted, we have to do that manually, to avoid accidental file deletion.
 * Method: DELETE
 * Resolves into: [WriteResults](https://docs.mongodb.com/manual/reference/method/db.collection.update/#writeresults-update)
 ```javascript
@@ -247,6 +245,9 @@ If we want to decode the data crudengine serves the .proto file at /api/protofil
 ## Authors
 * Horváth Bálint
 * Zákány Balázs
+
+## Changelog
+* 2020-05-25 File handling added.
 
 ## Contributing
 Email us at <a href="mailto:balzs.zkny9@gmail.com">zkny</a> or <a href="horvbalint99@gmail.com">horvbalint</a>
