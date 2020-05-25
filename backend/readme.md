@@ -351,8 +351,20 @@ module.exports = Services
 
 <a name="files"></a>
 ## Working with files
-Crudengine creates a CRUDFile schema to store information about the files it handles. This special schema will not show up in schemas if you request the schemas. If we want to store files, crudengine can do that for us via the fileupload route.
+Crudengine creates a CRUDFile schema to store information about the files it handles. This special schema will not show up in schemas if you request the schemas. If we want to store files, crudengine can do that for us via the fileupload route. File are served on /api/static/file.path regardless of what you give as FileDIR.
 > vue-crudengine automagically stores files when they are included in a create. In update it will also upload files and handle them, but it will not delete files. If we want to delete a file we need to use the filedelete route.
+
+```js
+// CRUDFile schema
+{
+  name: { type: String, alias: "File name", description: "Name of the saved file", required: true },
+  path: { type: String, alias: "File path", description: "Path of the saved file", required: true },
+  size: { type: Number, alias: "File size", description: "Sized of the saved file", required: true },
+  extension: { type: String, alias: "File extension", description: "Extension of the saved file", required: true },
+  isImage: { type: Boolean, alias: "Is image?", description: "Indicates whether the saved file is an image or not", default: false },
+  thumbnailPath: { type: String, alias: "Thumbnail path", description: "Path of the saved thumbnail", default: null },
+}
+```
 
 
 <a name="proto"></a>
