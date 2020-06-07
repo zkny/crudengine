@@ -11,7 +11,7 @@ const Router = express.Router()
 
 class CrudEngine {
 
-  constructor({SchemaDIR, ServiceDIR = null, FileDIR = null, ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 3}) {
+  constructor({SchemaDIR, ServiceDIR = null, FileDIR = null, ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2}) {
     this.Schema           = {}
     this.Services         = {}
     this.Middlewares      = {}
@@ -73,55 +73,111 @@ class CrudEngine {
   }
 
   GenerateSchemas(RawSchemas) {
-    for( let modelName in RawSchemas )
-      this.Schema[modelName] = this.GenerateSchema(RawSchemas, RawSchemas[modelName].schema.obj)
-  }
+    for(let modelName in RawSchemas) {
+      const CurrSchema = RawSchemas[modelName].schema
+      const Paths = {...CurrSchema.paths, ...CurrSchema.subpaths}
+      let fields = []
 
-  GenerateSchema( RawSchemas, schema, depth = 0 ) {
-    let fields = []
+      for(const FieldPath in Paths)
+        this.GenerateObjFieldChain(Paths[FieldPath], FieldPath, fields)
 
-    for( const FieldName in schema ) {
-      let FieldObj = schema[FieldName]
-      
-      let isArray = Array.isArray(FieldObj.type)
-      if( Array.isArray(FieldObj) ) {
-        isArray = true
-        FieldObj = FieldObj[0] 
-      }
-      
-      let fieldType = 'Object'
-      if(FieldObj.type) {
-        if(FieldObj.type.name) fieldType = FieldObj.type.name
-        if(FieldObj.type[0] && FieldObj.type[0].type ) fieldType = FieldObj.type[0].type.name
-      }
-
-      let field = {
-        name: FieldName,
-        isArray: isArray,
-        type: fieldType,
-        required: FieldObj.required || false,
-        ref: FieldObj.ref || null,
-        alias: FieldObj.alias || null,
-        description: FieldObj.description || null,
-        default: FieldObj.default || null,
-        minReadAuth: FieldObj.minReadAuth || 300,
-        minWriteAuth: FieldObj.minWriteAuth || 300,
-      }
-
-      if((field.ref || field.isArray || field.type == 'Object') && depth < this.MaxHeaderDepth) {
-        let subObj = null
-        
-        if(field.ref) subObj = field.ref == 'CRUDFile' ? CRUDFile.schema.obj : RawSchemas[field.ref].schema.obj
-        else if(field.isArray) subObj = FieldObj.type[0]
-        else if(field.type == 'Object') subObj = FieldObj
-
-        field.subheaders = this.GenerateSchema(RawSchemas, subObj, depth+1)
-      }
-
-      fields.push(field)
+      this.Schema[modelName] = fields
     }
 
-    return fields
+    for(let modelName in this.Schema) {
+      for(const FieldObj of this.Schema[modelName])
+        this.plugInFieldRef(FieldObj)
+    }
+  }
+
+  GenerateObjFieldChain(FieldObj, FieldPath, cursor) {
+    let FieldNames = FieldPath.split('.')
+    let lastName = FieldNames[FieldNames.length-1]
+
+    if( ['_id', '__v', '$'].some(s => lastName == s) ) return
+
+    for( let FieldName of FieldNames.slice(0, FieldNames.length-1) ) {
+      let ind = 0
+      while( ind < cursor.length && cursor[ind].name != FieldName ) ind++
+
+      if(ind == cursor.length)
+        cursor.push({
+          name: FieldName,
+          isArray: false,
+          type: 'Object',
+          required: false,
+          ref:  null,
+          alias: FieldName,
+          description: null,
+          default: null,
+          minReadAuth: 300,
+          minWriteAuth: 300,
+          subheaders: []
+        })
+      
+      cursor = cursor[ind].subheaders
+    }
+
+    cursor.push( this.GenerateSchemaField(FieldObj, lastName) )
+  }
+
+  GenerateSchemaField(FieldObj, FieldName ) {
+    let field = {
+      name: FieldName,
+      isArray: FieldObj.instance == 'Array',
+      type: FieldObj.instance,
+      required: FieldObj.options.required || false,
+      ref: FieldObj.options.ref || null,
+      alias: FieldObj.options.alias || null,
+      description: FieldObj.options.description || null,
+      default: FieldObj.options.default || null,
+      minReadAuth: FieldObj.options.minReadAuth || 300,
+      minWriteAuth: FieldObj.options.minWriteAuth || 300,
+    }
+
+    if(field.isArray) {
+      const Emb = FieldObj.$embeddedSchemaType
+      
+      if(!Emb.instance) field.subheaders = []
+      field.type = Emb.instance || 'Object'
+      field.ref = Emb.options.ref || field.ref
+      field.alias = field.alias || Emb.options.alias || null
+      field.description = field.description || Emb.options.description || null
+      field.default = field.default || Emb.options.default || null
+      field.minReadAuth = Math.min(field.minReadAuth, (Emb.options.minReadAuth || 300))
+      field.minWriteAuth = Math.min(field.minWriteAuth, (Emb.options.minWriteAuth || 300))
+    }
+
+    if(field.type == 'ObjectID') field.type = 'Object'
+    else if(field.type == 'Mixed') {
+      field.type = 'Object'
+      console.log('\x1b[36m%s\x1b[0m', `
+        CRUDENGINE WARNING:
+
+        Fields with mixed type can not be traced, due to limitation!
+        
+        To get subheaders use the following syntax:
+        field: {
+          subfield: String
+        }
+        
+        Instead of:
+        field: {
+          type: {subfield: String}
+        }
+      `)
+    }
+
+    return field
+  }
+
+  plugInFieldRef(FieldObj) {
+    if(!FieldObj.ref && !FieldObj.subheaders) return
+
+    if(FieldObj.ref && this.Schema[FieldObj.ref]) return FieldObj.subheaders = this.Schema[FieldObj.ref]
+
+    for(const FObj of FieldObj.subheaders)
+      this.plugInFieldRef(FObj)
   }
 
   GenerateProto() {
@@ -193,24 +249,27 @@ class CrudEngine {
     else return projection
   }
 
-  GetHeaders( model ) {
-    if(typeof model == 'string')
-      model = JSON.parse(JSON.stringify(this.Schema[model]))
+  GetHeaders( model, depth = 0 ) {
+    if(typeof model == 'string') model = this.Schema[model]
+    let headers = []
 
     for( let field of model ) {
-      field.key = field.name
-      field.name = field.alias
+      let hField = {}
 
-      for(let key in field) {
-        if( !['key', 'name', 'description', 'subheaders'].some(k => k == key) )
-          delete field[key]
-      }
+      for(let key of ['alias', 'name', 'description', 'type', 'isArray'])
+        hField[key] = field[key]
 
-      if(field.subheaders)
-        this.GetHeaders(field.subheaders)
+      hField.key = hField.name
+      hField.name = hField.alias
+      delete hField.alias
+
+      if(field.subheaders && depth < this.MaxHeaderDepth)
+        hField.subheaders = this.GetHeaders(field.subheaders, field.ref ? depth+1 : depth)
+
+      headers.push(hField)
     }
 
-    return model
+    return headers
   }
 
   GenerateRoutes() {
