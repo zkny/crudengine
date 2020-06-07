@@ -1,4 +1,3 @@
-
 ## Crudengine
 
 > Crudengine is a program to help us to get rid of boilerplate programing. The goal of this
@@ -22,6 +21,7 @@ schemas and services. Our schemas are basically the [mongoose models](https://mo
 * [Schemas](#schemas)
 * [Middleware](#middleware)
 * [Services](#services)
+* [Working with files](#files)
 * [About protobuf](#proto)
 * [Auth](#auth)
 * [Changle log](#change)
@@ -168,7 +168,7 @@ axios.post('/api/Book', MyNewBook)
 ```
 Params: An object that matches the mongoose schema. The whole req.body should be the object
 
-### /:fileupload
+### /fileupload
 >Uploads a given file, and generates a unique name for it. We must send the file as multiplart formdata.
 Will create thumbnail for images, if Thumbnail is set to true in the options. Thumbnail names will be like IGaveThisFileAName_thumbnail.jpg.
 * Method: POST
@@ -248,9 +248,12 @@ const BrandSchema = new mongoose.Schema({
     minWriteAuth: 200, // You have to be admin to change this
     minReadAuth: 300 // But you don't have to be admin to see it
   },
+  files: { type: [
+		{ type: ObjectId, ref: "CRUDFile", autopopulate: true, alias: "File" } // File refrences will be stored in this special schema.
+	], alias: "Files" }
 }, { selectPopulatedPaths: false }); // We need to add this, or autopopulated fields will always be there regardless of the projection.
 
-BrandSchema.plugin(autopopulate); // It's better to use [autopopulate](https://www.npmjs.com/package/mongoose-autopopulate) because its awesome
+BrandSchema.plugin(autopopulate); // You should always use [autopopulate](https://www.npmjs.com/package/mongoose-autopopulate) because its awesome
 module.exports = mongoose.model('Brand', BrandSchema); //export the model as usual
 
 ```
@@ -346,6 +349,24 @@ const Services = {
 module.exports = Services
 ```
 
+<a name="files"></a>
+## Working with files
+Crudengine creates a CRUDFile schema to store information about the files it handles. This special schema will not show up in schemas if you request the schemas. If we want to store files, crudengine can do that for us via the fileupload route. File are served on /api/static/file.path regardless of what you give as FileDIR.
+> vue-crudengine automagically stores files when they are included in a create. In update it will also upload files and handle them, but it will not delete files. If we want to delete a file we need to use the filedelete route.
+
+```js
+// CRUDFile schema
+{
+  name         : { type: String,  alias: "File name",      description: "Name of the saved file",                              required: true },
+  path         : { type: String,  alias: "File path",      description: "Path of the saved file",                              required: true },
+  size         : { type: Number,  alias: "File size",      description: "Size of the saved file",                              required: true },
+  extension    : { type: String,  alias: "File extension", description: "Extension of the saved file",                         required: true },
+  isImage      : { type: Boolean, alias: "Is image?",      description: "Indicates whether the saved file is an image or not", default: false },
+  thumbnailPath: { type: String,  alias: "Thumbnail path", description: "Path of the saved thumbnail",                         default: null  },
+}
+```
+
+
 <a name="proto"></a>
 ## Proto
 JSON.stringify is cpu intensive and slow. When querying a large set of data it is beneficial to use
@@ -366,6 +387,7 @@ will get the field removed from the results. In case of update or create the min
 ## Changelog
 
 * 2020-05-05 Missing variable in .proto file when using Boolean fixed.
+* 2020-05-25 File handling added.
 
 <a name="todo"></a>
 ## TODO
