@@ -1,10 +1,11 @@
-
 ## Crudengine
 
 > Crudengine is a program to help us to get rid of boilerplate programing. The goal of this
 is to shorten the time it takes us to get our things done. Define the schema and boom we
 can move to the frontend and worry about other things. If you haven't seen the frontend part
-of this, check it out [here](https://www.npmjs.com/package/vue-crudengine) or in the frontend folder!
+of this, check it out [here](https://www.npmjs.com/package/vue-crudengine)!
+
+##### If you find any problems please let us know [here](https://github.com/zkny/crudengine/issues)!
 
 
 ## The basics
@@ -13,7 +14,9 @@ schemas and services. Our schemas are basically the [mongoose models](https://mo
 
 ## Table of contents
 
+* [Prerequisites](#prerequisites)
 * [Install](#install)
+* [Important notes](#notes)
 * [Routes](#routes)
   * [Read](#read)
   * [Create](#create)
@@ -22,21 +25,64 @@ schemas and services. Our schemas are basically the [mongoose models](https://mo
 * [Schemas](#schemas)
 * [Middleware](#middleware)
 * [Services](#services)
-* [About protobuf](#proto)
+* [Working with files](#files)
+* [About protobuf](#proto) [BETA]
 * [Auth](#auth)
 * [Changle log](#change)
+* [TODO](#todo)
+
+<a name="prerequisites"></a>
+## Prerequisites
+* Use express
+* Use mongoose
+* Use mongoose-autopopulate (required for file handling)
 
 <a name="install"></a>
 ## Getting started
 ```javascript
 const crudengine = require("crudengine");
 
-const crud = new crudengine(path.resolve(__dirname, './schemas'), path.resolve(__dirname, './services')); // create the instance
+const crud = new crudengine({
+  SchemaDIR: path.resolve(__dirname, './schemas'),
+  ServiceDIR: path.resolve(__dirname, './services'), // [Optional] Services should be in this folder, if needed
+  FileDIR: path.resolve(__dirname, './files'), // [Optional] This will become the /static folder for crudengine
+  ImageHeightSize: 1500, // [Optional] Image compression to given size, defaults to 800
+  Thumbnail: false, // [Optional] Automatically save a thumbnail version for images, defaults to false
+  ThumbnailSize: 500 // [Optional] Thumbnail compression to given size, defaults to 250
+  MaxHeaderDepth: 3 // [Optional] Table headers will be traced till this depth recursively (default = 3)
+}); // create the instance
 
 Router.use(someGenericAuthMiddlware) // no auth, no data
 
 Router.use('/api', crud.GenerateRoutes()); // register as a route
 ```
+
+<a name="notes"></a>
+## Important notes
+> Bit of information to keep in mind.
+#### Schema limitations
+Fields with mixed type can not be traced, due to limitation
+
+```js
+// To get subheaders use the following syntax:
+field: {
+  subfield: String
+}
+
+// Instead of:
+field: {
+  type: {subfield: String}
+}
+
+// Using the second example, will not effect functionality, but the tableheaders won't show up for the object.
+```
+
+#### Proto limitations
+* The problem with this is that you can only use camelCase and no snake_case in the schema keys. Also we have to decode the data in the frontend, but if we use the [vue-crudengine](https://www.npmjs.com/package/vue-crudengine) (which is recommended anyway) package as well, it is done for us.
+
+* Before sending updates with data coming from proto routes, you have to JSON.stringify the data first, otherwise JSON.parse will fail. This is done automatically in [vue-crudengine](https://www.npmjs.com/package/vue-crudengine).
+
+* Custom objects (mixed type) in schemas will not be detected by the proto file generator.
 <a name="routes"></a>
 ## Routes
 
@@ -59,7 +105,7 @@ axios.get('/api/schema')
 ```javascript
 axios.get('/api/User/find', {
   params: {
-	  filter: { email: { $exists: true } },
+	  filter: { email: { $existCRUD operation helper class for node.js + mongoose + expresss: true } },
 	  projection: [ 'username', 'email' ],
 	  sort: { username: 1 },
 	  skip: 0,
@@ -95,7 +141,7 @@ Params:
 |:-:|-|:-:|:-:|
 | projection | Fields to include in [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html). | array of strings | ['name'] |
 
-### /proto/:model
+### /proto/:model [BETA]
 > The same as /:model/find but uses [protobuf](https://developers.google.com/protocol-buffers).
 * Method: GET
 * Returns: ArrayBuffer
@@ -159,6 +205,21 @@ axios.post('/api/Book', MyNewBook)
 ```
 Params: An object that matches the mongoose schema. The whole req.body should be the object
 
+### /fileupload
+>Uploads a given file, and generates a unique name for it. We must send the file as multiplart formdata.
+Will create thumbnail for images, if Thumbnail is set to true in the options. Thumbnail names will be like IGaveThisFileAName_thumbnail.jpg.
+* Method: POST
+* Returns: { path: '/static/fileUniqueName.jpg', originalname: 'IGaveThisFileAName.jpg' }
+```js
+
+let formData = new FormData()
+formData.append('file', MyFile)
+
+axios.post(`/api/fileupload`, formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+})
+```
+
 <a name="update"></a>
 ### /:model
 >Updates a document.
@@ -176,6 +237,19 @@ Params: A mongodb document that we modified. (ObjectID included)
 ```javascript
 axios.delete('/api/Book/507f191e810c19729de860ea')
 ```
+
+### /filedelete
+>Deletes a file at a specified path. Crudengine will not allow deleting files outside its static folder. If there is, deletes the thumbnail as well.
+* Method: DELETE
+* Returns: empty response
+```js
+axios.delete(`/api/filedelete`, {
+  data: {
+    path: '/static/myFilesUniqueName.jpg'
+  }
+})
+```
+
 <a name="schemas"></a>
 ## Schemas
 For this to work we need to create valid mongoose schemas, but we should add some extra things.
@@ -211,9 +285,12 @@ const BrandSchema = new mongoose.Schema({
     minWriteAuth: 200, // You have to be admin to change this
     minReadAuth: 300 // But you don't have to be admin to see it
   },
+  files: { type: [
+		{ type: ObjectId, ref: "CRUDFile", autopopulate: true, alias: "File" } // File refrences will be stored in this special schema.
+	], alias: "Files" }
 }, { selectPopulatedPaths: false }); // We need to add this, or autopopulated fields will always be there regardless of the projection.
 
-BrandSchema.plugin(autopopulate); // It's better to use [autopopulate](https://www.npmjs.com/package/mongoose-autopopulate) because its awesome
+BrandSchema.plugin(autopopulate); // You should always use [autopopulate](https://www.npmjs.com/package/mongoose-autopopulate) because its awesome
 module.exports = mongoose.model('Brand', BrandSchema); //export the model as usual
 
 ```
@@ -309,15 +386,37 @@ const Services = {
 module.exports = Services
 ```
 
+<a name="files"></a>
+## Working with files
+Crudengine creates a CRUDFile schema to store information about the files it handles. This special schema will not show up in schemas if you request the schemas. If we want to store files, crudengine can do that for us via the fileupload route. File are served on /api/static/file.path regardless of what you give as FileDIR.
+> vue-crudengine automagically stores files when they are included in a create. In update it will also upload files and handle them, but it will not delete files. If we want to delete a file we need to use the filedelete route.
+
+```js
+// CRUDFile schema
+{
+  name         : { type: String,  alias: "File name",      description: "Name of the saved file",                              required: true },
+  path         : { type: String,  alias: "File path",      description: "Path of the saved file",                              required: true },
+  size         : { type: Number,  alias: "File size",      description: "Size of the saved file",                              required: true },
+  extension    : { type: String,  alias: "File extension", description: "Extension of the saved file",                         required: true },
+  isImage      : { type: Boolean, alias: "Is image?",      description: "Indicates whether the saved file is an image or not", default: false },
+  thumbnailPath: { type: String,  alias: "Thumbnail path", description: "Path of the saved thumbnail",                         default: null  },
+}
+```
+
 <a name="proto"></a>
-## Proto
+## Proto [BETA]
 JSON.stringify is cpu intensive and slow. When querying a large set of data it is beneficial to use
 something lighter than JSON. We use protocol buffers to help with that. In order to be able to work with protobuf normally we need to create a .proto file that includes all schemas and a bit more. Crudengine will do that for us automatically.
 
 If we want to decode the data crudengine serves the .proto file at /api/protofile
+#### Warnings
+* The problem with this is that you can only use camelCase and no snake_case in the schema keys. Also we have to decode the data in the frontend, but if we use the [vue-crudengine](https://www.npmjs.com/package/vue-crudengine) (which is recommended anyway) package as well, it is done for us.
 
-##### The problem with this is that you can only use camelCase and no snake_case in the schema keys. Also we have to decode the data in the frontend, but if we use the [vue-crudengine](https://www.npmjs.com/package/vue-crudengine) (which is recommended anyway) package as well, it is done for us.
+* Before sending updates with data coming from proto routes, you have to JSON.stringify the data first, otherwise JSON.parse will fail. This is done automatically in [vue-crudengine](https://www.npmjs.com/package/vue-crudengine).
 
+* Custom objects (mixed type) in schemas will not be detected by the proto file generator.
+
+> You've been warned
 <a name="auth"></a>
 ## Auth
 In this system we expect to have the accesslevel number added by a middleware to the req (as req.accesslevel), for authentication purposes. If we can't find it the accesslevel will be set to 300.
@@ -329,6 +428,15 @@ will get the field removed from the results. In case of update or create the min
 ## Changelog
 
 * 2020-05-05 Missing variable in .proto file when using Boolean fixed.
+* 2020-05-25 File handling added.
+
+<a name="todo"></a>
+## TODO
+* add prerequisites
+* Fix protofile generator for custom objects (mixed type)
+* CRUDFile subheaders won't show up in tableheaders
+* Fix subdocument auth access
+
 
 ## Authors
 * Horváth Bálint
@@ -337,5 +445,5 @@ will get the field removed from the results. In case of update or create the min
 ## Contributing
 Email us at <a href="mailto:balzs.zkny9@gmail.com">zkny</a> or <a href="mailto:horvbalint99@gmail.com">horvbalint</a>
 
-## Licence
-[MIT](https://opensource.org/licenses/MIT)
+or visit the [github page](https://github.com/zkny/crudengine)
+CRUD operation helper class for node.js + mongoose + express
