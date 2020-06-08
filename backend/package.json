@@ -1,7 +1,7 @@
 {
   "name": "crudengine",
-  "version": "1.2.10",
-  "description": "CRUD operation helper class for node.js + mongoose + express",
+  "version": "1.3.1",
+  "description": "crudengine, crud operation helper, file handling, auth, access management, framework, nodejs, mongoose, express",
   "main": "index.js",
   "scripts": {
     "test": "test",
@@ -15,6 +15,7 @@
   "keywords": [
     "mongoose",
     "express",
+    "auth",
     "protobuf",
     "crudengine",
     "crud",

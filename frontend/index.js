@@ -69,8 +69,8 @@ export default class __API {
       this.getFileKeys(Data, promises)
       let uploadedFiles = await Promise.all(promises)
       this.setFileFields(Data, uploadedFiles)
-      
-      this.$axios.$post(`/${this.Prefix}/${this._capitalize(Model)}`, Data)
+
+      this.$axios.$post(`/${this.Prefix}/${this._capitalize(Model)}`, JOSN.stringify(Data))
         .then( r => resolve(r))
         .catch( async Error => {
           promises = []
@@ -85,7 +85,7 @@ export default class __API {
   }
   setFileFields(object, results) {
     for( let key in object) {
-      if( typeof object[key] == 'object' ) 
+      if( typeof object[key] == 'object' )
         this.setFileFields(object[key], results)
 
       if( object[key] instanceof File )
@@ -94,7 +94,7 @@ export default class __API {
   }
   getFileKeys(object, promises) {
     for( let key in object) {
-      if( typeof object[key] == 'object' ) 
+      if( typeof object[key] == 'object' )
         this.getFileKeys(object[key], promises)
 
       if( object[key] instanceof File )
@@ -126,7 +126,7 @@ export default class __API {
   }
   Update( Model, Data ) {
     return new Promise((resolve, reject) => {
-      this.$axios.$patch(`/${this.Prefix}/${this._capitalize(Model)}`, Data)
+      this.$axios.$patch(`/${this.Prefix}/${this._capitalize(Model)}`, JOSN.stringify(Data))
       .then( r => resolve(r))
       .catch( Error => reject(Error))
     })

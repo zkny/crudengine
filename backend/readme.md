@@ -5,6 +5,8 @@ is to shorten the time it takes us to get our things done. Define the schema and
 can move to the frontend and worry about other things. If you haven't seen the frontend part
 of this, check it out [here](https://www.npmjs.com/package/vue-crudengine)!
 
+##### If you find any problems please let us know [here](https://github.com/zkny/crudengine/issues)!
+
 
 ## The basics
 First we create an instance of the crudengine by telling it where we will place our
@@ -12,7 +14,9 @@ schemas and services. Our schemas are basically the [mongoose models](https://mo
 
 ## Table of contents
 
+* [Prerequisites](#prerequisites)
 * [Install](#install)
+* [Important notes](#notes)
 * [Routes](#routes)
   * [Read](#read)
   * [Create](#create)
@@ -22,10 +26,16 @@ schemas and services. Our schemas are basically the [mongoose models](https://mo
 * [Middleware](#middleware)
 * [Services](#services)
 * [Working with files](#files)
-* [About protobuf](#proto)
+* [About protobuf](#proto) [BETA]
 * [Auth](#auth)
 * [Changle log](#change)
 * [TODO](#todo)
+
+<a name="prerequisites"></a>
+## Prerequisites
+* Use express
+* Use mongoose
+* Use mongoose-autopopulate (required for file handling)
 
 <a name="install"></a>
 ## Getting started
@@ -46,6 +56,33 @@ Router.use(someGenericAuthMiddlware) // no auth, no data
 
 Router.use('/api', crud.GenerateRoutes()); // register as a route
 ```
+
+<a name="notes"></a>
+## Important notes
+> Bit of information to keep in mind.
+#### Schema limitations
+Fields with mixed type can not be traced, due to limitation
+
+```js
+// To get subheaders use the following syntax:
+field: {
+  subfield: String
+}
+
+// Instead of:
+field: {
+  type: {subfield: String}
+}
+
+// Using the second example, will not effect functionality, but the tableheaders won't show up for the object.
+```
+
+#### Proto limitations
+* The problem with this is that you can only use camelCase and no snake_case in the schema keys. Also we have to decode the data in the frontend, but if we use the [vue-crudengine](https://www.npmjs.com/package/vue-crudengine) (which is recommended anyway) package as well, it is done for us.
+
+* Before sending updates with data coming from proto routes, you have to JSON.stringify the data first, otherwise JSON.parse will fail. This is done automatically in [vue-crudengine](https://www.npmjs.com/package/vue-crudengine).
+
+* Custom objects (mixed type) in schemas will not be detected by the proto file generator.
 <a name="routes"></a>
 ## Routes
 
@@ -68,7 +105,7 @@ axios.get('/api/schema')
 ```javascript
 axios.get('/api/User/find', {
   params: {
-	  filter: { email: { $exists: true } },
+	  filter: { email: { $existCRUD operation helper class for node.js + mongoose + expresss: true } },
 	  projection: [ 'username', 'email' ],
 	  sort: { username: 1 },
 	  skip: 0,
@@ -104,7 +141,7 @@ Params:
 |:-:|-|:-:|:-:|
 | projection | Fields to include in [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html). | array of strings | ['name'] |
 
-### /proto/:model
+### /proto/:model [BETA]
 > The same as /:model/find but uses [protobuf](https://developers.google.com/protocol-buffers).
 * Method: GET
 * Returns: ArrayBuffer
@@ -366,16 +403,20 @@ Crudengine creates a CRUDFile schema to store information about the files it han
 }
 ```
 
-
 <a name="proto"></a>
-## Proto
+## Proto [BETA]
 JSON.stringify is cpu intensive and slow. When querying a large set of data it is beneficial to use
 something lighter than JSON. We use protocol buffers to help with that. In order to be able to work with protobuf normally we need to create a .proto file that includes all schemas and a bit more. Crudengine will do that for us automatically.
 
 If we want to decode the data crudengine serves the .proto file at /api/protofile
+#### Warnings
+* The problem with this is that you can only use camelCase and no snake_case in the schema keys. Also we have to decode the data in the frontend, but if we use the [vue-crudengine](https://www.npmjs.com/package/vue-crudengine) (which is recommended anyway) package as well, it is done for us.
 
-##### The problem with this is that you can only use camelCase and no snake_case in the schema keys. Also we have to decode the data in the frontend, but if we use the [vue-crudengine](https://www.npmjs.com/package/vue-crudengine) (which is recommended anyway) package as well, it is done for us.
+* Before sending updates with data coming from proto routes, you have to JSON.stringify the data first, otherwise JSON.parse will fail. This is done automatically in [vue-crudengine](https://www.npmjs.com/package/vue-crudengine).
 
+* Custom objects (mixed type) in schemas will not be detected by the proto file generator.
+
+> You've been warned
 <a name="auth"></a>
 ## Auth
 In this system we expect to have the accesslevel number added by a middleware to the req (as req.accesslevel), for authentication purposes. If we can't find it the accesslevel will be set to 300.
@@ -392,6 +433,10 @@ will get the field removed from the results. In case of update or create the min
 <a name="todo"></a>
 ## TODO
 * add prerequisites
+* Fix protofile generator for custom objects (mixed type)
+* CRUDFile subheaders won't show up in tableheaders
+* Fix subdocument auth access
+
 
 ## Authors
 * Horváth Bálint
@@ -401,3 +446,4 @@ will get the field removed from the results. In case of update or create the min
 Email us at <a href="mailto:balzs.zkny9@gmail.com">zkny</a> or <a href="mailto:horvbalint99@gmail.com">horvbalint</a>
 
 or visit the [github page](https://github.com/zkny/crudengine)
+CRUD operation helper class for node.js + mongoose + express
