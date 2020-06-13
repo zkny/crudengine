@@ -75,19 +75,33 @@ class CrudEngine {
   GenerateSchemas(RawSchemas) {
     for(let modelName in RawSchemas) {
       const CurrSchema = RawSchemas[modelName].schema
-      const Paths = {...CurrSchema.paths, ...CurrSchema.subpaths}
+      const Paths = this.GetPaths(CurrSchema)
       let fields = []
-
+  
       for(const FieldPath in Paths)
         this.GenerateObjFieldChain(Paths[FieldPath], FieldPath, fields)
-
+      
       this.Schema[modelName] = fields
     }
-
+    
     for(let modelName in this.Schema) {
       for(const FieldObj of this.Schema[modelName])
-        this.plugInFieldRef(FieldObj)
+      this.plugInFieldRef(FieldObj)
     }
+  }
+
+  GetPaths(schema, acc = {}, prefix = '') {
+    const JoinedPaths = {...schema.paths, ...schema.subpaths}
+
+    for(let key in JoinedPaths) {
+      const CurrPath = JoinedPaths[key]
+      const PrefixedKey = prefix + key
+
+      acc[PrefixedKey] = CurrPath
+      if(CurrPath.schema) this.GetPaths(CurrPath.schema, acc, `${PrefixedKey}.`)
+    }
+
+    return acc
   }
 
   GenerateObjFieldChain(FieldObj, FieldPath, cursor) {
@@ -149,6 +163,10 @@ class CrudEngine {
     }
 
     if(field.type == 'ObjectID') field.type = 'Object'
+    else if(field.type == 'Embedded') {
+      field.type = 'Object',
+      field.subheaders = []
+    }
     else if(field.type == 'Mixed') {
       field.type = 'Object'
       console.log('\x1b[36m%s\x1b[0m', `
@@ -158,7 +176,7 @@ class CrudEngine {
         
         To get subheaders use the following syntax:
         field: {
-          subfield: String
+          type: new Schema({subfield: String})
         }
         
         Instead of:

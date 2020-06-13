@@ -66,7 +66,7 @@ Fields with mixed type can not be traced, due to limitation
 ```js
 // To get subheaders use the following syntax:
 field: {
-  subfield: String
+  new Schema({subfield: String})
 }
 
 // Instead of:
