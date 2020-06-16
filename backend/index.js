@@ -193,6 +193,7 @@ class CrudEngine {
     if(!FieldObj.ref && !FieldObj.subheaders) return
 
     if(FieldObj.ref && this.Schema[FieldObj.ref]) return FieldObj.subheaders = this.Schema[FieldObj.ref]
+    if(FieldObj.ref == 'CRUDFile') FieldObj.subheaders = []
 
     for(const FObj of FieldObj.subheaders)
       this.plugInFieldRef(FObj)
