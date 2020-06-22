@@ -148,11 +148,13 @@ class CrudEngine {
       minReadAuth: FieldObj.options.minReadAuth || 300,
       minWriteAuth: FieldObj.options.minWriteAuth || 300,
     }
+    if(FieldObj.options.primary) field.primary = true
 
     if(field.isArray) {
       const Emb = FieldObj.$embeddedSchemaType
       
       if(!Emb.instance) field.subheaders = []
+      if(Emb.options.primary) field.primary = true
       field.type = Emb.instance || 'Object'
       field.ref = Emb.options.ref || field.ref
       field.alias = field.alias || Emb.options.alias || null
@@ -275,7 +277,7 @@ class CrudEngine {
     for( let field of model ) {
       let hField = {}
 
-      for(let key of ['alias', 'name', 'description', 'type', 'isArray'])
+      for(let key of ['alias', 'name', 'description', 'type', 'isArray', 'primary'])
         hField[key] = field[key]
 
       hField.key = hField.name
