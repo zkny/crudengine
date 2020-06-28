@@ -5,6 +5,12 @@ export default class __API {
     this.$axios = axios
     this.Prefix = Prefix
   }
+  GetFileUrl(File) {
+    return {
+      path: `${this.$axios.baseURL}/${this.Prefix}/${File.path}`,
+      thumbnail: `${this.$axios.baseURL}/${this.Prefix}/${File.thumbnailPath}`,
+    }
+  }
   initProto(Protofile) {
     return new Promise((resolve, reject) => {
       load(Protofile, (error, api) => {

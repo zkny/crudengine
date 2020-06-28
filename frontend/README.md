@@ -161,6 +161,15 @@ this.$API.UploadFile( MyFile )
 .catch( Error => ... )
 ```
 
+### GetFileUrl
+> Get the file path for the file.
+* Method: GET
+* Returns: { path, thumbnail }
+```javascript
+this.$API.GetFileUrl( File )
+
+```
+
 <a name="update"></a>
 ### Update
 >Updates a document in database. If there is a file in the object, crudengine will upload it, but will not delete the previous file.
