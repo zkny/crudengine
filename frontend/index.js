@@ -7,8 +7,8 @@ export default class __API {
   }
   GetFileUrl(File) {
     return {
-      path: `${this.$axios.baseURL}/${this.Prefix}/${File.path}`,
-      thumbnail: `${this.$axios.baseURL}/${this.Prefix}/${File.thumbnailPath}`,
+      path: `${this.$axios.defaults.baseURL}/${this.Prefix}/${File.path}`,
+      thumbnail: `${this.$axios.defaults.baseURL}/${this.Prefix}/${File.thumbnailPath}`,
     }
   }
   initProto(Protofile) {
