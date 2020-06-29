@@ -404,7 +404,7 @@ class CrudEngine {
         let extension     = file.originalname.split('.').pop()
         let filePath      = `/${file.filename}.${extension}`
 
-        fs.renameSync(req.file.path, filePath)
+        fs.renameSync(req.file.path, file.path)
 
         let fileData = {
           name: file.originalname,
@@ -495,7 +495,7 @@ class CrudEngine {
       height: this.ImageHeightSize,
       withoutEnlargement: true
     })
-    .toFile(filePath, (err, info) => {
+    .toFile(file.path, (err, info) => {
       if(err) return res.send(err)
 
       fs.unlinkSync(file.path)
