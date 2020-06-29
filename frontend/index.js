@@ -12,6 +12,18 @@ export default class __API {
       thumbnail: `${this.$axios.defaults.baseURL}/${ServeStaticPath}/${File.thumbnailPath}`,
     }
   }
+  GetFile(File) {
+    this.$axios.$get(`${ServeStaticPath}/${File.path}`, { responseType: 'blob' })
+    .then( r => {
+      resolve(window.URL.createObjectURL( new Blob([r]) ))
+    }).catch( Error => reject(Error))
+  }
+  GetThumbnail(File) {
+    this.$axios.$get(`${ServeStaticPath}/${File.thumbnailPath}`, { responseType: 'blob' })
+    .then( r => {
+      resolve(window.URL.createObjectURL( new Blob([r]) ))
+    }).catch( Error => reject(Error))
+  }
   initProto(Protofile) {
     return new Promise((resolve, reject) => {
       load(Protofile, (error, api) => {
