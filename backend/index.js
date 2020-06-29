@@ -509,7 +509,7 @@ class CrudEngine {
       }
 
       if(this.Thumbnail) {
-        return sharp(filePath)
+        return sharp(file.path)
         .resize({
           height: this.ThumbnailSize,
           withoutEnlargement: true
