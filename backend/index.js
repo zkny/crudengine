@@ -402,7 +402,7 @@ class CrudEngine {
 
         let file          = JSON.parse(JSON.stringify(req.file))
         let extension     = file.originalname.split('.').pop()
-        let filePath      = `${file.path}.${extension}`
+        let filePath      = `${file.filename}.${extension}`
 
         fs.renameSync(req.file.path, filePath)
 
@@ -488,7 +488,7 @@ class CrudEngine {
   handleImageUpload(req, res) {
     let file          = JSON.parse(JSON.stringify(req.file))
     let extension     = file.originalname.split('.').pop()
-    let filePath      = `${file.path}.${extension}`
+    let filePath      = `${file.filename}.${extension}`
 
     sharp(req.file.path)
     .resize({
