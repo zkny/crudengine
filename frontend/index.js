@@ -89,7 +89,7 @@ export default class __API {
       let uploadedFiles = await Promise.all(promises)
       this.setFileFields(Data, uploadedFiles)
 
-      this.$axios.$post(`/${this.Prefix}/${this._capitalize(Model)}`, JSON.stringify(Data))
+      this.$axios.$post(`/${this.Prefix}/${this._capitalize(Model)}`, Data)
         .then( r => resolve(r))
         .catch( async Error => {
           promises = []
@@ -145,7 +145,7 @@ export default class __API {
   }
   Update( Model, Data ) {
     return new Promise((resolve, reject) => {
-      this.$axios.$patch(`/${this.Prefix}/${this._capitalize(Model)}`, JSON.stringify(Data))
+      this.$axios.$patch(`/${this.Prefix}/${this._capitalize(Model)}`, Data)
       .then( r => resolve(r))
       .catch( Error => reject(Error))
     })
