@@ -37,18 +37,18 @@ class CrudEngine {
       const ServiceFileArray = fs.readdirSync( ServiceDIR )
       for( const ServiceFile of ServiceFileArray ) {
         if( ServiceFile == '.DS_Store' || ServiceFile.includes('.map') ) continue
-        
+
         const ServiceName = ServiceFile
         .replace( '.js', '' )
         .replace( '.ts', '' )
         .replace( '.coffee', '' )
-        
+
         this.Services[ServiceName] = require(`${ServiceDIR}/${ServiceFile}`)
       }
     }
-    
+
     let rawSchemas = {}
-    
+
     for( const SchemaFile of fs.readdirSync(SchemaDIR) ) {
       if( SchemaFile == '.DS_Store' || SchemaFile.includes('.map') ) continue
 
@@ -77,13 +77,13 @@ class CrudEngine {
       const CurrSchema = RawSchemas[modelName].schema
       const Paths = this.GetPaths(CurrSchema)
       let fields = []
-  
+
       for(const FieldPath in Paths)
         this.GenerateObjFieldChain(Paths[FieldPath], FieldPath, fields)
-      
+
       this.Schema[modelName] = fields
     }
-    
+
     for(let modelName in this.Schema) {
       for(const FieldObj of this.Schema[modelName])
       this.plugInFieldRef(FieldObj)
@@ -128,7 +128,7 @@ class CrudEngine {
           minWriteAuth: 300,
           subheaders: []
         })
-      
+
       cursor = cursor[ind].subheaders
     }
 
@@ -153,7 +153,7 @@ class CrudEngine {
 
     if(field.isArray) {
       const Emb = FieldObj.$embeddedSchemaType
-      
+
       if(!Emb.instance) field.subheaders = []
       if(Emb.options.primary) field.primary = true
       if(Emb.options.hidden) field.hidden = true
@@ -177,12 +177,12 @@ class CrudEngine {
         CRUDENGINE WARNING:
 
         Fields with mixed type can not be traced, due to limitation!
-        
+
         To get subheaders use the following syntax:
         field: {
           type: new Schema({subfield: String})
         }
-        
+
         Instead of:
         field: {
           type: {subfield: String}
@@ -299,9 +299,6 @@ class CrudEngine {
   GenerateRoutes() {
     Router.use( '/protofile', express.static(path.resolve(__dirname, './api.proto')) )
 
-    if(this.FileDIR)
-      Router.use( '/static', express.static(path.resolve(__dirname, this.FileDIR)) )
-
     Router.get( '/schema', (req, res) => res.send(this.Schema) )
 
     // Generate the crud routes for each model
@@ -399,17 +396,16 @@ class CrudEngine {
     if(this.FileDIR) {
       Router.post( "/fileupload", this.upload.single('file'), (req, res) => {
         if(req.file.mimetype.split('/')[0] == 'image') return this.handleImageUpload(req, res)
-    
+
         let file          = JSON.parse(JSON.stringify(req.file))
         let extension     = file.originalname.split('.').pop()
         let filePath      = `${file.path}.${extension}`
-        let staticPath    = `/static/${file.filename}.${extension}`
-    
+
         fs.renameSync(req.file.path, filePath)
-    
+
         let fileData = {
           name: file.originalname,
-          path: staticPath,
+          path: filePath,
           size: file.size,
           extension: extension,
         }
@@ -418,17 +414,17 @@ class CrudEngine {
           else res.send(file)
         })
       })
-    
+
       Router.delete( "/filedelete", (req, res) => {
         CRUDFile.findOne({_id: req.body._id})
           .then( file => {
             let realPath = path.resolve( this.FileDIR, file.path.split('/static/')[1] )
             if(realPath.indexOf(this.FileDIR) != 0) return res.status(500).send('Invalid file path!')
-      
+
             fs.unlinkSync(realPath)
             let thumbnailPath = realPath.replace('.', '_thumbnail.')
             if(fs.existsSync(thumbnailPath)) fs.unlinkSync(thumbnailPath)
-    
+
             CRUDFile.deleteOne({_id: file._id})
               .then( () => res.send() )
               .catch( err => res.status(500).send(err) )
@@ -490,7 +486,6 @@ class CrudEngine {
     let file          = JSON.parse(JSON.stringify(req.file))
     let extension     = file.originalname.split('.').pop()
     let filePath      = `${file.path}.${extension}`
-    let staticPath    = `/static/${file.filename}.${extension}`
 
     sharp(req.file.path)
     .resize({
@@ -504,7 +499,7 @@ class CrudEngine {
 
       let fileData = {
         name: file.originalname,
-        path: staticPath,
+        path: filePath,
         size: file.size,
         extension: extension,
         isImage: true
@@ -519,14 +514,14 @@ class CrudEngine {
         .toFile(`${file.path}_thumbnail.${extension}`, (err, th_info) => {
           if(err) return res.send(err)
 
-          fileData.thumbnailPath = `/static/${file.filename}_thumbnail.${extension}`
+          fileData.thumbnailPath = `/${file.filename}_thumbnail.${extension}`
           CRUDFile.create(fileData, (err, file) => {
             if(err) res.status(500).send(err)
             else res.send(file)
           })
         })
       }
-      
+
       CRUDFile.create(fileData, (err, file) => {
         if(err) res.status(500).send(err)
         else res.send(file)
