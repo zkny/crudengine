@@ -302,7 +302,7 @@ class CrudEngine {
 
     Router.get( '/schema', (req, res) => res.send(this.Schema) )
     if(this.FileDIR)
-      Router.use( `${ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
+      Router.use( `${this.ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
 
     // Generate the crud routes for each model
     Router.get( '/getter/:service/:fun', (req, res) =>
