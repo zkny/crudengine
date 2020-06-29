@@ -4,7 +4,7 @@ export default class __API {
   constructor( axios, Prefix, ServeStaticPath = 'static' ) {
     this.$axios = axios
     this.Prefix = Prefix
-    this.ServeStaticPath = filePath
+    this.ServeStaticPath = ServeStaticPath
   }
   GetFileUrl(File) {
     return {
