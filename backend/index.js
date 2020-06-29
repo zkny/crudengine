@@ -11,7 +11,7 @@ const Router = express.Router()
 
 class CrudEngine {
 
-  constructor({SchemaDIR, ServiceDIR = null, FileDIR = null, ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2}) {
+  constructor({SchemaDIR, ServiceDIR = null, FileDIR = null, ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2, ServeStaticPath = '/static'}) {
     this.Schema           = {}
     this.Services         = {}
     this.Middlewares      = {}
@@ -25,6 +25,7 @@ class CrudEngine {
     this.ServiceDIR       = ServiceDIR
     this.API              = false
     this.MaxHeaderDepth   = MaxHeaderDepth
+    this.ServeStaticPath  = ServeStaticPath
 
     if (FileDIR) {
       if(!fs.existsSync(FileDIR))
@@ -300,6 +301,8 @@ class CrudEngine {
     Router.use( '/protofile', express.static(path.resolve(__dirname, './api.proto')) )
 
     Router.get( '/schema', (req, res) => res.send(this.Schema) )
+    if(this.FileDIR)
+      Router.use( `${ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
 
     // Generate the crud routes for each model
     Router.get( '/getter/:service/:fun', (req, res) =>

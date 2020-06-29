@@ -1,16 +1,12 @@
 const { load } = require('protobufjs');
 
 export default class __API {
-  constructor( axios, Prefix, ServeStaticPath = false ) {
+  constructor( axios, Prefix, ServeStaticPath = 'static' ) {
     this.$axios = axios
     this.Prefix = Prefix
     this.ServeStaticPath = filePath
   }
   GetFileUrl(File) {
-    if (!this.ServeStaticPath) {
-      console.warn('Static path not configured!')
-      return
-    }
     return {
       path: `${this.$axios.defaults.baseURL}/${ServeStaticPath}/${File.path}`,
       thumbnail: `${this.$axios.defaults.baseURL}/${ServeStaticPath}/${File.thumbnailPath}`,
