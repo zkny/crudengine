@@ -13,16 +13,20 @@ export default class __API {
     }
   }
   GetFile(File) {
-    this.$axios.$get(`${this.ServeStaticPath}/${File.path}`, { responseType: 'blob' })
-    .then( r => {
-      resolve(window.URL.createObjectURL( new Blob([r]) ))
-    }).catch( Error => reject(Error))
+    return new Promise((resolve, reject) => {
+      this.$axios.$get(`${this.Prefix}/${this.ServeStaticPath}${File.path}`, { responseType: 'blob' })
+      .then( r => {
+        resolve(window.URL.createObjectURL( new Blob([r]) ))
+      }).catch( Error => reject(Error))
+    })
   }
-  GetThumbnail(File) {
-    this.$axios.$get(`${this.ServeStaticPath}/${File.thumbnailPath}`, { responseType: 'blob' })
-    .then( r => {
-      resolve(window.URL.createObjectURL( new Blob([r]) ))
-    }).catch( Error => reject(Error))
+  GetFile(File) {
+    return new Promise((resolve, reject) => {
+      this.$axios.$get(`${this.Prefix}/${this.ServeStaticPath}${File.thumbnailPath}`, { responseType: 'blob' })
+      .then( r => {
+        resolve(window.URL.createObjectURL( new Blob([r]) ))
+      }).catch( Error => reject(Error))
+    })
   }
   initProto(Protofile) {
     return new Promise((resolve, reject) => {
