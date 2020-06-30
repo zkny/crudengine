@@ -301,6 +301,9 @@ class CrudEngine {
     Router.use( '/protofile', express.static(path.resolve(__dirname, './api.proto')) )
 
     Router.get( '/schema', (req, res) => res.send(this.Schema) )
+
+    Router.get( '/schema/:model', (req, res) => res.send(this.Schema[req.params.model]) )
+
     if(this.FileDIR)
       Router.use( `${this.ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
 
