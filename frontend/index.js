@@ -8,18 +8,18 @@ export default class __API {
   }
   GetFileUrl(File) {
     return {
-      path: `${this.$axios.defaults.baseURL}/${ServeStaticPath}/${File.path}`,
-      thumbnail: `${this.$axios.defaults.baseURL}/${ServeStaticPath}/${File.thumbnailPath}`,
+      path: `${this.$axios.defaults.baseURL}/${this.ServeStaticPath}/${File.path}`,
+      thumbnail: `${this.$axios.defaults.baseURL}/${this.ServeStaticPath}/${File.thumbnailPath}`,
     }
   }
   GetFile(File) {
-    this.$axios.$get(`${ServeStaticPath}/${File.path}`, { responseType: 'blob' })
+    this.$axios.$get(`${this.ServeStaticPath}/${File.path}`, { responseType: 'blob' })
     .then( r => {
       resolve(window.URL.createObjectURL( new Blob([r]) ))
     }).catch( Error => reject(Error))
   }
   GetThumbnail(File) {
-    this.$axios.$get(`${ServeStaticPath}/${File.thumbnailPath}`, { responseType: 'blob' })
+    this.$axios.$get(`${this.ServeStaticPath}/${File.thumbnailPath}`, { responseType: 'blob' })
     .then( r => {
       resolve(window.URL.createObjectURL( new Blob([r]) ))
     }).catch( Error => reject(Error))
