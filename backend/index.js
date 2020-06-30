@@ -498,8 +498,6 @@ class CrudEngine {
     .toFile(`${file.path}.${extension}`, (err, info) => {
       if(err) return res.send(err)
 
-      fs.unlinkSync(file.path)
-
       let fileData = {
         name: file.originalname,
         path: filePath,
@@ -518,12 +516,17 @@ class CrudEngine {
           if(err) return res.send(err)
 
           fileData.thumbnailPath = `/${file.filename}_thumbnail.${extension}`
+
+          fs.unlinkSync(file.path)
+
           CRUDFile.create(fileData, (err, file) => {
             if(err) res.status(500).send(err)
             else res.send(file)
           })
         })
       }
+
+      fs.unlinkSync(file.path)
 
       CRUDFile.create(fileData, (err, file) => {
         if(err) res.status(500).send(err)
