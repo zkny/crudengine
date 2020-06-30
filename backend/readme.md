@@ -7,6 +7,11 @@ of this, check it out [here](https://www.npmjs.com/package/vue-crudengine)!
 
 ##### If you find any problems please let us know [here](https://github.com/zkny/crudengine/issues)!
 
+## Disclaimer
+This package is very much under development and all functions are subject to change. Also some functionality may not be documented or they might not work at all.
+
+If you find anything that isn't working or not up to the documentation let us know or create a pull request over on github. Thank You in advance!
+
 
 ## The basics
 First we create an instance of the crudengine by telling it where we will place our

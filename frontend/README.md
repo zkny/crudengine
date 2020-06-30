@@ -1,6 +1,14 @@
+
 ## Vue-crudengine
 
 > Crudengine is a program to help us to get rid of boilerplate programing. This package is a wrapper for crudengine, so we don't have to write http calls, but neet little functions, that are much easier to remember and read. This package is meant to be used in pair with the [crudengine](https://www.npmjs.com/package/crudengine).
+
+
+## Disclaimer
+This package is very much under development and all functions are subject to change. Also some functionality may not be documented or they might not work at all.
+
+If you find anything that isn't working or not up to the documentation let us know or create a pull request over on github. Thank You in advance!
+
 
 ## Table of contents
 
