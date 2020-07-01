@@ -140,7 +140,7 @@ export default class __API {
     return new Promise((resolve, reject) => {
       this.$axios.$delete(`/${this.Prefix}/filedelete`, {
         data: {
-          path: `/${this.ServeStaticPath}/${FilePath}`
+          path: `/${this.ServeStaticPath}${FilePath}`
         }
       })
         .then( r => resolve(r) )
