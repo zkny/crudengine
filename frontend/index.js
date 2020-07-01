@@ -14,7 +14,7 @@ export default class __API {
   }
   GetFile(File) {
     return new Promise((resolve, reject) => {
-      this.$axios.$get(`${this.Prefix}/${this.ServeStaticPath}${File.path}`, { responseType: 'blob' })
+      this.$axios.$get(`${this.Prefix}/${this.ServeStaticPath}/${File.path}`, { responseType: 'blob' })
       .then( r => {
         resolve(window.URL.createObjectURL( new Blob([r]) ))
       }).catch( Error => reject(Error))
@@ -22,7 +22,7 @@ export default class __API {
   }
   GetThumbnail(File) {
     return new Promise((resolve, reject) => {
-      this.$axios.$get(`${this.Prefix}/${this.ServeStaticPath}${File.thumbnailPath}`, { responseType: 'blob' })
+      this.$axios.$get(`${this.Prefix}/${this.ServeStaticPath}/${File.thumbnailPath}`, { responseType: 'blob' })
       .then( r => {
         resolve(window.URL.createObjectURL( new Blob([r]) ))
       }).catch( Error => reject(Error))
@@ -136,13 +136,9 @@ export default class __API {
         .catch( Error => reject(Error) )
     })
   }
-  DeleteFile( FilePath ) {
+  DeleteFile( File ) {
     return new Promise((resolve, reject) => {
-      this.$axios.$delete(`/${this.Prefix}/filedelete`, {
-        data: {
-          path: `/${this.ServeStaticPath}${FilePath}`
-        }
-      })
+      this.$axios.$delete(`/${this.Prefix}/filedelete/${File._id}`)
         .then( r => resolve(r) )
         .catch( Error => reject(Error) )
     })

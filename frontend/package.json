@@ -1,6 +1,6 @@
 {
   "name": "vue-crudengine",
-  "version": "1.2.24",
+  "version": "1.2.25",
   "description": "Crudengine frontend api plugin for vuejs",
   "main": "index.js",
   "scripts": {

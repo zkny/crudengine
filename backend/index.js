@@ -405,7 +405,7 @@ class CrudEngine {
 
         let file          = JSON.parse(JSON.stringify(req.file))
         let extension     = file.originalname.split('.').pop()
-        let filePath      = `/${file.filename}.${extension}`
+        let filePath      = `${file.filename}.${extension}`
 
         fs.renameSync(req.file.path, `${file.path}.${extension}`)
 
@@ -421,8 +421,8 @@ class CrudEngine {
         })
       })
 
-      Router.delete( "/filedelete", (req, res) => {
-        CRUDFile.findOne({_id: req.body._id})
+      Router.delete( "/filedelete/:id", (req, res) => {
+        CRUDFile.findOne({_id: req.params.id})
           .then( file => {
             let realPath = path.resolve( this.FileDIR, file.path )
             if(realPath.indexOf(this.FileDIR) != 0) return res.status(500).send('Invalid file path!')
@@ -491,7 +491,7 @@ class CrudEngine {
   handleImageUpload(req, res) {
     let file          = JSON.parse(JSON.stringify(req.file))
     let extension     = file.originalname.split('.').pop()
-    let filePath      = `/${file.filename}.${extension}`
+    let filePath      = `${file.filename}.${extension}`
 
     sharp(req.file.path)
     .resize({
@@ -518,7 +518,7 @@ class CrudEngine {
         .toFile(`${file.path}_thumbnail.${extension}`, (err, th_info) => {
           if(err) return res.send(err)
 
-          fileData.thumbnailPath = `/${file.filename}_thumbnail.${extension}`
+          fileData.thumbnailPath = `${file.filename}_thumbnail.${extension}`
 
           fs.unlinkSync(file.path)
 
