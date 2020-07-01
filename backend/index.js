@@ -424,7 +424,7 @@ class CrudEngine {
       Router.delete( "/filedelete", (req, res) => {
         CRUDFile.findOne({_id: req.body._id})
           .then( file => {
-            let realPath = path.resolve( this.FileDIR, file.path.split('/static/')[1] )
+            let realPath = path.resolve( this.FileDIR, file.path )
             if(realPath.indexOf(this.FileDIR) != 0) return res.status(500).send('Invalid file path!')
 
             fs.unlinkSync(realPath)
