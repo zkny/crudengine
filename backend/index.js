@@ -6,6 +6,7 @@ const { load }      = require('protobufjs')
 const multer        = require('multer')
 const sharp         = require('sharp')
 const CRUDFile      = require('./schemas/CRUDFile')
+const Fuse          = require('fuse.js')
 
 const Router = express.Router()
 
@@ -89,6 +90,18 @@ class CrudEngine {
       for(const FieldObj of this.Schema[modelName])
       this.plugInFieldRef(FieldObj)
     }
+  }
+
+  GetSchemaKeys(keys, object, prefix, actualDepth, maxDepth){
+    if (actualDepth > maxDepth) return
+
+    if (!object["subheaders"]) {
+      keys.push(prefix + object["name"])
+      return
+    }
+
+    for (var obj of object["subheaders"])
+      GetSchemaKeys(keys, obj, prefix + object["name"] + ".", actualDepth + 1, maxDepth)
   }
 
   GetPaths(schema, acc = {}, prefix = '') {
@@ -383,6 +396,43 @@ class CrudEngine {
         .then( async results => {
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
           res.send(results)
+        })
+        .catch( error => res.status(500).send(error) )
+    })
+
+    Router.post( '/:model/search', async (req, res) => {
+      // props: pattern, depth, keys, threshold
+      if(!req.depth)     req.depth = 2
+      if(!req.threshold) req.threshold = 0.4
+
+      const MFunctions = this.Middlewares[req.params.model].R
+      const projection = await this.GetProjection( req.accesslevel, req.params.model, req.query.projection )
+
+      if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
+      mongoose.model(req.params.model).find()
+        .then( async allData => {
+          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
+          const schemaData = getSchema()
+
+          if(req.pattern == "") {
+            res.send(allData)
+            return
+          }
+
+          if(!req.keys || req.keys.length == 0){
+            req.keys = []
+            for (var obj of schemaData)
+              GetSchemaKeys(req.keys, obj, "", 0, req.depth)
+          }
+
+          const options = {
+            includeScore: false,
+            keys: req.keys,
+            threshold: req.threshold,
+          }
+
+          const fuse = new Fuse(allData, options)
+          res.send(fuse.search(req.pattern))
         })
         .catch( error => res.status(500).send(error) )
     })
