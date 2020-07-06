@@ -412,7 +412,7 @@ class CrudEngine {
       mongoose.model(req.params.model).find()
         .then( async allData => {
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-          const schemaData = getSchema()
+          const schemaData = this.Schema[req.params.model]
 
           if(req.pattern == "") {
             res.send(allData)
