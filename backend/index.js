@@ -6,6 +6,7 @@ const { load }      = require('protobufjs')
 const multer        = require('multer')
 const sharp         = require('sharp')
 const CRUDFile      = require('./schemas/CRUDFile')
+const Fuse          = require('fuse.js')
 
 const Router = express.Router()
 
@@ -89,6 +90,17 @@ class CrudEngine {
       for(const FieldObj of this.Schema[modelName])
       this.plugInFieldRef(FieldObj)
     }
+  }
+
+  GetSchemaKeys(keys, object, prefix, actualDepth, maxDepth){
+    if (actualDepth > maxDepth) return
+
+    if (!object["subheaders"]) {
+      keys.push(prefix + object["name"])
+      return
+    }
+    for (var obj of object["subheaders"])
+      this.GetSchemaKeys(keys, obj, prefix + object["name"] + ".", actualDepth + 1, maxDepth)
   }
 
   GetPaths(schema, acc = {}, prefix = '') {
@@ -176,14 +188,11 @@ class CrudEngine {
       field.type = 'Object'
       console.log('\x1b[36m%s\x1b[0m', `
         CRUDENGINE WARNING:
-
         Fields with mixed type can not be traced, due to limitation!
-
         To get subheaders use the following syntax:
         field: {
           type: new Schema({subfield: String})
         }
-
         Instead of:
         field: {
           type: {subfield: String}
@@ -383,6 +392,41 @@ class CrudEngine {
         .then( async results => {
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
           res.send(results)
+        })
+        .catch( error => res.status(500).send(error) )
+    })
+
+    Router.post( '/search/:model', async (req, res) => {
+      // props: pattern, depth, keys, threshold
+      if(!req.body.depth)     req.body.depth = 2
+      if(!req.body.threshold) req.body.threshold = 0.4
+
+
+      const MFunctions = this.Middlewares[req.params.model].R
+      const projection = await this.GetProjection( req.accesslevel, req.params.model, req.query.projection )
+
+      if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
+      mongoose.model(req.params.model).find()
+        .then( async allData => {
+          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
+          const schemaData = this.Schema[req.params.model]
+
+          if(req.body.pattern == "") return res.send(allData)
+
+          if(!req.body.keys || req.body.keys.length == 0) {
+            req.body.keys = []
+            for (var obj of schemaData)
+              this.GetSchemaKeys(req.body.keys, obj, "", 0, req.body.depth)
+          }
+
+          const options = {
+            includeScore: false,
+            keys: req.body.keys,
+            threshold: req.body.threshold
+          }
+
+          const fuse = new Fuse(allData, options)
+          res.send(fuse.search(req.body.pattern))
         })
         .catch( error => res.status(500).send(error) )
     })
