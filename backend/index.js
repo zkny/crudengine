@@ -400,7 +400,7 @@ class CrudEngine {
         .catch( error => res.status(500).send(error) )
     })
 
-    Router.post( '/:model/search', async (req, res) => {
+    Router.post( '/search/:model', async (req, res) => {
       // props: pattern, depth, keys, threshold
       if(!req.depth)     req.depth = 2
       if(!req.threshold) req.threshold = 0.4
@@ -428,7 +428,7 @@ class CrudEngine {
           const options = {
             includeScore: false,
             keys: req.keys,
-            threshold: req.threshold,
+            threshold: req.threshold
           }
 
           const fuse = new Fuse(allData, options)
