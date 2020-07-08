@@ -99,9 +99,9 @@ class CrudEngine {
       keys.push(prefix + object["name"])
       return
     }
-
+    console.log(object);
     for (var obj of object["subheaders"])
-      GetSchemaKeys(keys, obj, prefix + object["name"] + ".", actualDepth + 1, maxDepth)
+      this.GetSchemaKeys(keys, obj, prefix + object["name"] + ".", actualDepth + 1, maxDepth)
   }
 
   GetPaths(schema, acc = {}, prefix = '') {
@@ -189,14 +189,11 @@ class CrudEngine {
       field.type = 'Object'
       console.log('\x1b[36m%s\x1b[0m', `
         CRUDENGINE WARNING:
-
         Fields with mixed type can not be traced, due to limitation!
-
         To get subheaders use the following syntax:
         field: {
           type: new Schema({subfield: String})
         }
-
         Instead of:
         field: {
           type: {subfield: String}
@@ -402,8 +399,9 @@ class CrudEngine {
 
     Router.post( '/search/:model', async (req, res) => {
       // props: pattern, depth, keys, threshold
-      if(!req.depth)     req.depth = 2
-      if(!req.threshold) req.threshold = 0.4
+      if(!req.body.depth)     req.body.depth = 2
+      if(!req.body.threshold) req.body.threshold = 0.4
+
 
       const MFunctions = this.Middlewares[req.params.model].R
       const projection = await this.GetProjection( req.accesslevel, req.params.model, req.query.projection )
@@ -414,25 +412,22 @@ class CrudEngine {
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
           const schemaData = this.Schema[req.params.model]
 
-          if(req.pattern == "") {
-            res.send(allData)
-            return
-          }
+          if(req.body.pattern == "") return res.send(allData)
 
-          if(!req.keys || req.keys.length == 0){
-            req.keys = []
+          if(!req.body.keys || req.body.keys.length == 0) {
+            req.body.keys = []
             for (var obj of schemaData)
-              GetSchemaKeys(req.keys, obj, "", 0, req.depth)
+              this.GetSchemaKeys(req.body.keys, obj, "", 0, req.body.depth)
           }
 
           const options = {
             includeScore: false,
-            keys: req.keys,
-            threshold: req.threshold
+            keys: req.body.keys,
+            threshold: req.body.threshold
           }
 
           const fuse = new Fuse(allData, options)
-          res.send(fuse.search(req.pattern))
+          res.send(fuse.search(req.body.pattern))
         })
         .catch( error => res.status(500).send(error) )
     })
