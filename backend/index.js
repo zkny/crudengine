@@ -99,7 +99,6 @@ class CrudEngine {
       keys.push(prefix + object["name"])
       return
     }
-    console.log(object);
     for (var obj of object["subheaders"])
       this.GetSchemaKeys(keys, obj, prefix + object["name"] + ".", actualDepth + 1, maxDepth)
   }
