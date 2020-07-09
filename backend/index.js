@@ -313,6 +313,17 @@ class CrudEngine {
 
     Router.get( '/schema/:model', (req, res) => res.send(this.Schema[req.params.model]) )
 
+    Router.post( '/schemakeys/:model', (req, res) => {
+      if (!req.body.depth) req.body.depth = 2
+      let keys = []
+      const schema = this.Schema[req.params.model]
+
+      for (var obj of schema)
+        this.GetSchemaKeys(keys, obj, "", 0, req.body.depth)
+
+      res.send(keys)
+    })
+
     if(this.FileDIR)
       Router.use( `${this.ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
 
