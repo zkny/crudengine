@@ -14,6 +14,7 @@ class CrudEngine {
 
   constructor({SchemaDIR, ServiceDIR = null, FileDIR = null, ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2, ServeStaticPath = '/static'}) {
     this.Schema           = {}
+    this.CRUDFileShema    = []
     this.Services         = {}
     this.Middlewares      = {}
     this.Operations       = ['C', 'R', 'U', 'D']
@@ -50,7 +51,7 @@ class CrudEngine {
     }
 
     let rawSchemas = {}
-
+    let CRUDFileSchema = require('./schemas/CRUDFile')
     for( const SchemaFile of fs.readdirSync(SchemaDIR) ) {
       if( SchemaFile == '.DS_Store' || SchemaFile.includes('.map') ) continue
 
@@ -66,6 +67,7 @@ class CrudEngine {
       }
     }
 
+    this.CRUDFileShema = this.GenerateSchema(CRUDFileSchema)
     this.GenerateSchemas(rawSchemas)
     this.GenerateProto()
 
@@ -75,21 +77,24 @@ class CrudEngine {
   }
 
   GenerateSchemas(RawSchemas) {
-    for(let modelName in RawSchemas) {
-      const CurrSchema = RawSchemas[modelName].schema
-      const Paths = this.GetPaths(CurrSchema)
-      let fields = []
-
-      for(const FieldPath in Paths)
-        this.GenerateObjFieldChain(Paths[FieldPath], FieldPath, fields)
-
-      this.Schema[modelName] = fields
-    }
+    for(let modelName in RawSchemas)
+      this.Schema[modelName] = this.GenerateSchema(RawSchemas[modelName])
 
     for(let modelName in this.Schema) {
       for(const FieldObj of this.Schema[modelName])
       this.plugInFieldRef(FieldObj)
     }
+  }
+
+  GenerateSchema(RawSchema) {
+    const CurrSchema = RawSchema.schema
+    const Paths = this.GetPaths(CurrSchema)
+    let fields = []
+
+    for(const FieldPath in Paths)
+      this.GenerateObjFieldChain(Paths[FieldPath], FieldPath, fields)
+
+    return fields
   }
 
   GetSchemaKeys(keys, object, prefix, actualDepth, maxDepth){
@@ -207,7 +212,7 @@ class CrudEngine {
     if(!FieldObj.ref && !FieldObj.subheaders) return
 
     if(FieldObj.ref && this.Schema[FieldObj.ref]) return FieldObj.subheaders = this.Schema[FieldObj.ref]
-    if(FieldObj.ref == 'CRUDFile') FieldObj.subheaders = []
+    if(FieldObj.ref == 'CRUDFile') return FieldObj.subheaders = this.CRUDFileShema
 
     for(const FObj of FieldObj.subheaders)
       this.plugInFieldRef(FObj)
@@ -383,6 +388,7 @@ class CrudEngine {
         .limit( Number(req.query.limit) || null )
         .then( async results => {
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
+
           res.send({ Headers, Data: results })
         })
         .catch( error => res.status(500).send(error) )
