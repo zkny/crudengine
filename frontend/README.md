@@ -178,6 +178,24 @@ this.$API.GetFileUrl( File )
 
 ```
 
+### GetFile
+> Get the url for the downloaded file.
+* Method: GET
+* Returns: blob url (String)
+```javascript
+this.$API.GetFile( File )
+
+```
+
+### GetThumbnail
+> Get the url for the downloaded thumbnail.
+* Method: GET
+* Returns: blob url (String)
+```javascript
+this.$API.GetThumbnail( File )
+
+```
+
 <a name="update"></a>
 ### Update
 >Updates a document in database. If there is a file in the object, crudengine will upload it, but will not delete the previous file.
