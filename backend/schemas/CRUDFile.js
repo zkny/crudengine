@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 const CRUDFileSchema = new mongoose.Schema({
-  name: { type: String, alias: "File name", description: "Name of the saved file", required: true },
+  name: { type: String, alias: "File name", description: "Name of the saved file", required: true, primary: true },
   path: { type: String, alias: "File path", description: "Path of the saved file", required: true },
   size: { type: Number, alias: "File size", description: "Sized of the saved file", required: true },
   extension: { type: String, alias: "File extension", description: "Extension of the saved file", required: true },
