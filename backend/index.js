@@ -12,7 +12,7 @@ const Router = express.Router()
 
 class CrudEngine {
 
-  constructor({SchemaDIR, ServiceDIR = null, FileDIR = null, ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2, ServeStaticPath = '/static'}) {
+  constructor({SchemaDIR, ServiceDIR = null, FileDIR = null, ServeStaticPath = '/static', ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2 }) {
     this.Schema           = {}
     this.Services         = {}
     this.Middlewares      = {}
@@ -22,11 +22,11 @@ class CrudEngine {
     this.Thumbnail        = Thumbnail
     this.ThumbnailSize    = ThumbnailSize
     this.FileDIR          = FileDIR
+    this.ServeStaticPath  = ServeStaticPath
     this.SchemaDIR        = SchemaDIR
     this.ServiceDIR       = ServiceDIR
     this.API              = false
     this.MaxHeaderDepth   = MaxHeaderDepth
-    this.ServeStaticPath  = ServeStaticPath
 
     if (FileDIR) {
       if(!fs.existsSync(FileDIR))
@@ -54,7 +54,10 @@ class CrudEngine {
     for( const SchemaFile of fs.readdirSync(SchemaDIR) ) {
       if( SchemaFile == '.DS_Store' || SchemaFile.includes('.map') ) continue
 
-      let schemaObj = require(`${SchemaDIR}/${SchemaFile}`)
+      let schemaObj      if(!fs.existsSync(FileDIR))
+        fs.mkdirSync(path.resolve(FileDIR), { recursive: true })
+
+      this.upload = multer({ dest: FileDIR }) = require(`${SchemaDIR}/${SchemaFile}`)
       let modelname = schemaObj.modelName || schemaObj.default.modelName
 
       rawSchemas[modelname] = schemaObj
@@ -88,7 +91,10 @@ class CrudEngine {
 
     for(let modelName in this.Schema) {
       for(const FieldObj of this.Schema[modelName])
-      this.plugInFieldRef(FieldObj)
+      this.plugInFieldRef(FieldObj)      if(!fs.existsSync(FileDIR))
+        fs.mkdirSync(path.resolve(FileDIR), { recursive: true })
+
+      this.upload = multer({ dest: FileDIR })
     }
   }
 
