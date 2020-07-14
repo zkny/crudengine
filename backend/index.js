@@ -57,7 +57,6 @@ class CrudEngine {
 
       let schemaObj = require(`${SchemaDIR}/${SchemaFile}`)
 
-      this.upload = multer({ dest: FileDIR }) = require(`${SchemaDIR}/${SchemaFile}`)
       let modelname = schemaObj.modelName || schemaObj.default.modelName
 
       rawSchemas[modelname] = schemaObj
@@ -86,7 +85,6 @@ class CrudEngine {
       for(const FieldObj of this.Schema[modelName])
       this.plugInFieldRef(FieldObj)
 
-      this.upload = multer({ dest: FileDIR })
     }
   }
 
