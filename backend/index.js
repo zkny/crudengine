@@ -55,8 +55,7 @@ class CrudEngine {
     for( const SchemaFile of fs.readdirSync(SchemaDIR) ) {
       if( SchemaFile == '.DS_Store' || SchemaFile.includes('.map') ) continue
 
-      let schemaObj      if(!fs.existsSync(FileDIR))
-        fs.mkdirSync(path.resolve(FileDIR), { recursive: true })
+      let schemaObj = require(`${SchemaDIR}/${SchemaFile}`)
 
       this.upload = multer({ dest: FileDIR }) = require(`${SchemaDIR}/${SchemaFile}`)
       let modelname = schemaObj.modelName || schemaObj.default.modelName
@@ -85,8 +84,7 @@ class CrudEngine {
 
     for(let modelName in this.Schema) {
       for(const FieldObj of this.Schema[modelName])
-      this.plugInFieldRef(FieldObj)      if(!fs.existsSync(FileDIR))
-        fs.mkdirSync(path.resolve(FileDIR), { recursive: true })
+      this.plugInFieldRef(FieldObj)
 
       this.upload = multer({ dest: FileDIR })
     }
