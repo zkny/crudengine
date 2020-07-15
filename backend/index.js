@@ -13,7 +13,8 @@ const Router = express.Router()
 class CrudEngine {
 
   constructor({SchemaDIR, ServiceDIR = null, FileDIR = null, ServeStaticPath = '/static', ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2 }) {
-    this.Schema           = {}
+    this.Schemas          = {}
+    this.PathSchemas      = {}
     this.CRUDFileShema    = []
     this.Services         = {}
     this.Middlewares      = {}
@@ -70,6 +71,7 @@ class CrudEngine {
 
     this.CRUDFileShema = this.GenerateSchema(CRUDFileSchema)
     this.GenerateSchemas(rawSchemas)
+    this.GeneratePathSchemas()
     this.GenerateProto()
 
     load( path.resolve(__dirname, './api.proto'), (error, api) => {
@@ -79,12 +81,11 @@ class CrudEngine {
 
   GenerateSchemas(RawSchemas) {
     for(let modelName in RawSchemas)
-      this.Schema[modelName] = this.GenerateSchema(RawSchemas[modelName])
+      this.Schemas[modelName] = this.GenerateSchema(RawSchemas[modelName])
 
-    for(let modelName in this.Schema) {
-      for(const FieldObj of this.Schema[modelName])
+    for(let modelName in this.Schemas) {
+      for(const FieldObj of this.Schemas[modelName])
       this.plugInFieldRef(FieldObj)
-
     }
   }
 
@@ -97,6 +98,22 @@ class CrudEngine {
       this.GenerateObjFieldChain(Paths[FieldPath], FieldPath, fields)
 
     return fields
+  }
+
+  GeneratePathSchemas() {
+    for(let schema in this.Schemas) {
+      this.PathSchemas[schema] = {}
+  
+      for(let field of this.Schemas[schema])
+        this.GeneratePathSchema(field, this.PathSchemas[schema])
+    }
+  }
+  GeneratePathSchema(field, acc, prefix = '') {
+    acc[`${prefix}${field.name}`] = field
+    if(!field.subheaders) return
+
+    for(let f of field.subheaders)
+      this.GeneratePathSchema(f, acc, `${prefix}${field.name}.`)
   }
 
   GetSchemaKeys(keys, object, prefix, actualDepth, maxDepth){
@@ -213,7 +230,7 @@ class CrudEngine {
   plugInFieldRef(FieldObj) {
     if(!FieldObj.ref && !FieldObj.subheaders) return
 
-    if(FieldObj.ref && this.Schema[FieldObj.ref]) return FieldObj.subheaders = this.Schema[FieldObj.ref]
+    if(FieldObj.ref && this.Schemas[FieldObj.ref]) return FieldObj.subheaders = this.Schemas[FieldObj.ref]
     if(FieldObj.ref == 'CRUDFile') return FieldObj.subheaders = this.CRUDFileShema
 
     for(const FObj of FieldObj.subheaders)
@@ -223,11 +240,11 @@ class CrudEngine {
   GenerateProto() {
     let proto = "package api;\nsyntax = \"proto3\";\n\n"
 
-    for( const ModelName in this.Schema ) {
+    for( const ModelName in this.Schemas ) {
       proto += `message ${ModelName} {\n`
       let id = 1
 
-      for( let item of this.Schema[ModelName] ) {
+      for( let item of this.Schemas[ModelName] ) {
         let type = this.GetCorrectType( item )
         if(type == null)continue
 
@@ -238,7 +255,7 @@ class CrudEngine {
       proto += "}\n"
 
       proto += `message ${ModelName}s {\n\trepeated ${ModelName} ${ModelName}s = 1;\n}\n\n`
-    }
+    }    
 
     fs.writeFileSync( path.resolve(__dirname, './api.proto'), proto, {flag: "w+"} )
   }
@@ -256,41 +273,52 @@ class CrudEngine {
     }
   }
 
-  GetDeclinedReadFields(accesslevel = 300, model) {
-    return new Promise( (resolve, reject) =>
-      resolve (
-        this.Schema[model]
-          .filter( field => field.minReadAuth != undefined && field.minReadAuth < accesslevel)
-          .map( one => one.name)
-      )
-    )
+  GetDeclinedReadPaths(accesslevel = 300, model) {
+    return Object.entries(this.PathSchemas[model])
+      .filter( entr => entr[1].minReadAuth < accesslevel )
+      .map( entr => entr[0])
   }
 
-  GetDeclinedWriteFields(accesslevel = 300, model) {
-    return new Promise( (resolve, reject) => {
-      let declinedFields = this.Schema[model].filter( field => field.minWriteAuth != undefined && field.minWriteAuth < accesslevel )
-      if( declinedFields.filter(one => one.required).length ) return resolve(null)
-      resolve( declinedFields.map(one => one.name) )
-    })
+  GetDeclinedWritePaths(accesslevel = 300, model) {
+    let declinedEntrs = Object.entries(this.PathSchemas[model]).filter( entr => entr[1].minWriteAuth < accesslevel )
+    if( declinedEntrs.filter(entr => entr[1].required).length ) return null
+    return declinedEntrs.map(entr => entr[0])
   }
 
-  async GetProjection(accesslevel, model, fields = [], include = true) {
+  RemoveDeclinedParts(declienedPaths, object) {
+    outer: for(let path of declienedPaths) {
+      let acc = object
+      let keys = path.split('.')
+      let lastKey = keys.pop()
+
+      for(let key of keys) {
+        acc = acc[key]
+        if(acc == undefined) continue outer
+      }
+
+      delete acc[lastKey]
+    }
+  }
+
+  GetProjection(accesslevel, model, paths = [], include = true) {
     let projection = {}
-    if(!fields.length) include = false
+    if(!paths.length) include = false
 
-    if(include) this.Schema[model].forEach( one => {
-      if( !fields.includes(one.name) ) projection[one.name] = 0
-    })
-    else { fields.forEach( one => projection[one] = 0 ) }
+    if(include) {
+      for(let path in this.PathSchemas[model]) projection[path] = 0
+      for(let path of paths) delete projection[path]
+    }
+    else
+      for(let path in paths) projection[path] = 0
 
-    (await this.GetDeclinedReadFields(accesslevel, model)).map( one => projection[one] = 0 )
+    for(let path of this.GetDeclinedReadPaths(accesslevel, model)) projection[path] = 0
 
-    if( !Object.keys(projection).length ) return { __v: 0 }
+    if(!Object.keys(projection).length) return { __v: 0 }
     else return projection
   }
 
   GetHeaders( model, depth = 0 ) {
-    if(typeof model == 'string') model = this.Schema[model]
+    if(typeof model == 'string') model = this.Schemas[model]
     let headers = []
 
     for( let field of model ) {
@@ -316,14 +344,14 @@ class CrudEngine {
   GenerateRoutes() {
     Router.use( '/protofile', express.static(path.resolve(__dirname, './api.proto')) )
 
-    Router.get( '/schema', (req, res) => res.send(this.Schema) )
+    Router.get( '/schema', (req, res) => res.send(this.Schemas) )
 
-    Router.get( '/schema/:model', (req, res) => res.send(this.Schema[req.params.model]) )
+    Router.get( '/schema/:model', (req, res) => res.send(this.Schemas[req.params.model]) )
 
     Router.post( '/schemakeys/:model', (req, res) => {
       if (!req.body.depth) req.body.depth = 2
       let keys = []
-      const schema = this.Schema[req.params.model]
+      const schema = this.Schemas[req.params.model]
 
       for (var obj of schema)
         this.GetSchemaKeys(keys, obj, "", 0, req.body.depth)
@@ -428,7 +456,7 @@ class CrudEngine {
       mongoose.model(req.params.model).find()
         .then( async allData => {
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-          const schemaData = this.Schema[req.params.model]
+          const schemaData = this.Schemas[req.params.model]
 
           if(req.body.pattern == "") return res.send(allData)
 
@@ -504,10 +532,10 @@ class CrudEngine {
 
     Router.post( "/:model", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].C
-      const declinedFields = await this.GetDeclinedWriteFields( req.accesslevel, req.params.model )
+      const declinedPaths = this.GetDeclinedWritePaths(req.accesslevel, req.params.model)
 
-      if(declinedFields == null) return res.status(500).send('EPERM')
-      declinedFields.forEach( one => delete req.body[one] )
+      if(declinedPaths == null) return res.status(500).send('EPERM')
+      this.RemoveDeclinedParts(declinedPaths, req.body)
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       const Mod = mongoose.model(req.params.model)
@@ -521,10 +549,10 @@ class CrudEngine {
 
     Router.patch( "/:model", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].U
-      const declinedFields = await this.GetDeclinedWriteFields( req.accesslevel, req.params.model )
+      const declinedPaths = this.GetDeclinedWritePaths(req.accesslevel, req.params.model)
 
-      if(declinedFields == null) return res.status(500).send('EPERM')
-      declinedFields.forEach( one => delete req.body[one] )
+      if(declinedPaths == null) return res.status(500).send('EPERM')
+      this.RemoveDeclinedParts(declinedPaths, req.body)
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       mongoose.model(req.params.model).updateOne({ _id: req.body._id }, req.body, async (error, results) => {
@@ -536,9 +564,9 @@ class CrudEngine {
 
     Router.delete( "/:model/:id", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].D
-      const declinedFields = await this.GetDeclinedWriteFields( req.accesslevel, req.params.model )
+      const declinedPaths = this.GetDeclinedWritePaths(req.accesslevel, req.params.model)
 
-      if( declinedFields == null || declinedFields.length ) return res.status(500).send('EPERM')
+      if(declinedPaths == null || declinedPaths.length) return res.status(500).send('EPERM')
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       mongoose.model(req.params.model).deleteOne({ _id: req.params.id }, async (error, results) => {
