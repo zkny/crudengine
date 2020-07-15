@@ -49,14 +49,27 @@ export  default {
 
 ###  Schema
 >Special function that returns everything there is to know about the schemas we registered. Schema names will be the keys of the object.
+>If ModelName is given only that models schema will be returned
 * Method: GET
 * Resolves into: Object
 
 ```javascript
-this.$API.Schema()
+this.$API.Schema( ModelName = null ) // ModelName is optional
 .then(schema => ... )
 .catch( Error => ... )
 ```
+
+###  SchemaKeys
+>Returns the key paths to the schema
+* Method: GET
+* Resolves into: Array of Strings e.g. ['name.surname', name.firstname]
+
+```javascript
+this.$API.SchemaKeys( ModelName = null ) // ModelName is optional
+.then(schema => ... )
+.catch( Error => ... )
+```
+
 
 ### Read
 >Returns documents for the schema.
