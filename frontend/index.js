@@ -70,7 +70,7 @@ export default class __API {
   }
   SchemaKeys(ModelName) {
     return new Promise((resolve, reject) => {
-      this.$axios.$get(`/${this.Prefix}/schemakeys/:${ModelName}`)
+      this.$axios.$get(`/${this.Prefix}/schemakeys/${ModelName}`)
       .then( r => resolve(r))
       .catch( Error => reject(Error))
     })
