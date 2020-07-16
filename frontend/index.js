@@ -68,9 +68,9 @@ export default class __API {
       .catch( Error => reject(Error))
     })
   }
-  SchemaKeys(ModelName) {
+  SchemaKeys(ModelName, Depth) {
     return new Promise((resolve, reject) => {
-      this.$axios.$get(`/${this.Prefix}/schemakeys/${ModelName}`)
+      this.$axios.$post(`/${this.Prefix}/schemakeys/${ModelName}`, { depth: Depth })
       .then( r => resolve(r))
       .catch( Error => reject(Error))
     })
