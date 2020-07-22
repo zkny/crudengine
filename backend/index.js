@@ -311,10 +311,25 @@ class CrudEngine {
     else
       for(let path in paths) projection[path] = 0
 
-    for(let path of this.GetDeclinedReadPaths(accesslevel, model)) projection[path] = 0
+    let declinedPaths = this.GetDeclinedReadPaths(accesslevel, model)
+    let roots = this.GetRootsOfPaths(declinedPaths)
+    
+    for(let path of roots) projection[path] = 0
 
     if(!Object.keys(projection).length) return { __v: 0 }
     else return projection
+  }
+
+  GetRootsOfPaths(paths) {
+    if(!paths.length) return []
+
+    let roots = [paths[0]]
+    for(let path of paths) {
+      if(path.indexOf(roots[roots.length-1]) !== 0)
+        roots.push(path)
+    }
+
+    return roots
   }
 
   GetHeaders( model, depth = 0 ) {
