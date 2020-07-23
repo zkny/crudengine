@@ -13,7 +13,8 @@ const Router = express.Router()
 class CrudEngine {
 
   constructor({SchemaDIR, ServiceDIR = null, FileDIR = null, ServeStaticPath = '/static', ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2 }) {
-    this.Schema           = {}
+    this.Schemas          = {}
+    this.DecycledSchemas  = {}
     this.CRUDFileShema    = []
     this.Services         = {}
     this.Middlewares      = {}
@@ -70,6 +71,7 @@ class CrudEngine {
 
     this.CRUDFileShema = this.GenerateSchema(CRUDFileSchema)
     this.GenerateSchemas(rawSchemas)
+    this.GenerateDecycledSchemas()
     this.GenerateProto()
 
     load( path.resolve(__dirname, './api.proto'), (error, api) => {
@@ -79,12 +81,11 @@ class CrudEngine {
 
   GenerateSchemas(RawSchemas) {
     for(let modelName in RawSchemas)
-      this.Schema[modelName] = this.GenerateSchema(RawSchemas[modelName])
+      this.Schemas[modelName] = this.GenerateSchema(RawSchemas[modelName])
 
-    for(let modelName in this.Schema) {
-      for(const FieldObj of this.Schema[modelName])
+    for(let modelName in this.Schemas) {
+      for(const FieldObj of this.Schemas[modelName])
       this.plugInFieldRef(FieldObj)
-
     }
   }
 
@@ -97,6 +98,35 @@ class CrudEngine {
       this.GenerateObjFieldChain(Paths[FieldPath], FieldPath, fields)
 
     return fields
+  }
+
+  GenerateDecycledSchemas() {
+    for(let schema in this.Schemas) {
+      this.DecycledSchemas[schema] = this.CopySubheaders({subheaders: this.Schemas[schema]}).subheaders
+      for(let field of this.DecycledSchemas[schema])
+        this.DecycleField(field)
+    }
+  }
+
+  DecycleField(fieldObj, refs = []) {
+    if(!fieldObj.subheaders) return
+
+    if(refs.includes(fieldObj.ref)) return fieldObj.subheaders = []
+    if(fieldObj.ref) refs.push(fieldObj.ref)
+
+    this.CopySubheaders(fieldObj)
+
+    for(let field of fieldObj.subheaders)
+      this.DecycleField(field, [...refs])
+  }
+
+  CopySubheaders(field) {
+    field.subheaders = [...field.subheaders]
+    
+    for(let i=0; i<field.subheaders.length; ++i)
+      field.subheaders[i] = {...field.subheaders[i]}
+
+    return field
   }
 
   GetSchemaKeys(keys, object, prefix, actualDepth, maxDepth){
@@ -213,7 +243,7 @@ class CrudEngine {
   plugInFieldRef(FieldObj) {
     if(!FieldObj.ref && !FieldObj.subheaders) return
 
-    if(FieldObj.ref && this.Schema[FieldObj.ref]) return FieldObj.subheaders = this.Schema[FieldObj.ref]
+    if(FieldObj.ref && this.Schemas[FieldObj.ref]) return FieldObj.subheaders = this.Schemas[FieldObj.ref]
     if(FieldObj.ref == 'CRUDFile') return FieldObj.subheaders = this.CRUDFileShema
 
     for(const FObj of FieldObj.subheaders)
@@ -223,11 +253,11 @@ class CrudEngine {
   GenerateProto() {
     let proto = "package api;\nsyntax = \"proto3\";\n\n"
 
-    for( const ModelName in this.Schema ) {
+    for( const ModelName in this.Schemas ) {
       proto += `message ${ModelName} {\n`
       let id = 1
 
-      for( let item of this.Schema[ModelName] ) {
+      for( let item of this.Schemas[ModelName] ) {
         let type = this.GetCorrectType( item )
         if(type == null)continue
 
@@ -259,7 +289,7 @@ class CrudEngine {
   GetDeclinedReadFields(accesslevel = 300, model) {
     return new Promise( (resolve, reject) =>
       resolve (
-        this.Schema[model]
+        this.Schemas[model]
           .filter( field => field.minReadAuth != undefined && field.minReadAuth < accesslevel)
           .map( one => one.name)
       )
@@ -268,7 +298,7 @@ class CrudEngine {
 
   GetDeclinedWriteFields(accesslevel = 300, model) {
     return new Promise( (resolve, reject) => {
-      let declinedFields = this.Schema[model].filter( field => field.minWriteAuth != undefined && field.minWriteAuth < accesslevel )
+      let declinedFields = this.Schemas[model].filter( field => field.minWriteAuth != undefined && field.minWriteAuth < accesslevel )
       if( declinedFields.filter(one => one.required).length ) return resolve(null)
       resolve( declinedFields.map(one => one.name) )
     })
@@ -278,7 +308,7 @@ class CrudEngine {
     let projection = {}
     if(!fields.length) include = false
 
-    if(include) this.Schema[model].forEach( one => {
+    if(include) this.Schemas[model].forEach( one => {
       if( !fields.includes(one.name) ) projection[one.name] = 0
     })
     else { fields.forEach( one => projection[one] = 0 ) }
@@ -290,7 +320,7 @@ class CrudEngine {
   }
 
   GetHeaders( model, depth = 0 ) {
-    if(typeof model == 'string') model = this.Schema[model]
+    if(typeof model == 'string') model = this.Schemas[model]
     let headers = []
 
     for( let field of model ) {
@@ -316,14 +346,14 @@ class CrudEngine {
   GenerateRoutes() {
     Router.use( '/protofile', express.static(path.resolve(__dirname, './api.proto')) )
 
-    Router.get( '/schema', (req, res) => res.send(this.Schema) )
+    Router.get( '/schema', (req, res) => res.send(this.DecycledSchemas) )
 
-    Router.get( '/schema/:model', (req, res) => res.send(this.Schema[req.params.model]) )
+    Router.get( '/schema/:model', (req, res) => res.send(this.DecycledSchemas[req.params.model]) )
 
     Router.post( '/schemakeys/:model', (req, res) => {
       if (!req.body.depth) req.body.depth = 2
       let keys = []
-      const schema = this.Schema[req.params.model]
+      const schema = this.Schemas[req.params.model]
 
       for (var obj of schema)
         this.GetSchemaKeys(keys, obj, "", 0, req.body.depth)
@@ -428,7 +458,7 @@ class CrudEngine {
       mongoose.model(req.params.model).find()
         .then( async allData => {
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-          const schemaData = this.Schema[req.params.model]
+          const schemaData = this.Schemas[req.params.model]
 
           if(req.body.pattern == "") return res.send(allData)
 
