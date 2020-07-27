@@ -15,6 +15,7 @@ class CrudEngine {
   constructor({SchemaDIR, ServiceDIR = null, FileDIR = null, ServeStaticPath = '/static', ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2 }) {
     this.Schemas          = {}
     this.PathSchemas      = {}
+    this.DecycledSchemas  = {}
     this.CRUDFileShema    = []
     this.Services         = {}
     this.Middlewares      = {}
@@ -71,6 +72,7 @@ class CrudEngine {
 
     this.CRUDFileShema = this.GenerateSchema(CRUDFileSchema)
     this.GenerateSchemas(rawSchemas)
+    this.GenerateDecycledSchemas()
     this.GeneratePathSchemas()
     this.GenerateProto()
 
@@ -100,14 +102,44 @@ class CrudEngine {
     return fields
   }
 
-  GeneratePathSchemas() {
+  GenerateDecycledSchemas() {
     for(let schema in this.Schemas) {
+      this.DecycledSchemas[schema] = this.CopySubheaders({subheaders: this.Schemas[schema]}).subheaders
+      for(let field of this.DecycledSchemas[schema])
+        this.DecycleField(field)
+    }
+  }
+
+  DecycleField(fieldObj, refs = []) {
+    if(!fieldObj.subheaders) return
+
+    if(refs.includes(fieldObj.ref)) return fieldObj.subheaders = []
+    if(fieldObj.ref) refs.push(fieldObj.ref)
+
+    this.CopySubheaders(fieldObj)
+
+    for(let field of fieldObj.subheaders)
+      this.DecycleField(field, [...refs])
+  }
+
+  CopySubheaders(field) {
+    field.subheaders = [...field.subheaders]
+    
+    for(let i=0; i<field.subheaders.length; ++i)
+      field.subheaders[i] = {...field.subheaders[i]}
+
+    return field
+  }
+
+  GeneratePathSchemas() {
+    for(let schema in this.DecycledSchemas) {
       this.PathSchemas[schema] = {}
   
-      for(let field of this.Schemas[schema])
+      for(let field of this.DecycledSchemas[schema])
         this.GeneratePathSchema(field, this.PathSchemas[schema])
     }
   }
+  
   GeneratePathSchema(field, acc, prefix = '') {
     acc[`${prefix}${field.name}`] = field
     if(!field.subheaders) return
@@ -359,9 +391,9 @@ class CrudEngine {
   GenerateRoutes() {
     Router.use( '/protofile', express.static(path.resolve(__dirname, './api.proto')) )
 
-    Router.get( '/schema', (req, res) => res.send(this.Schemas) )
+    Router.get( '/schema', (req, res) => res.send(this.DecycledSchemas) )
 
-    Router.get( '/schema/:model', (req, res) => res.send(this.Schemas[req.params.model]) )
+    Router.get( '/schema/:model', (req, res) => res.send(this.DecycledSchemas[req.params.model]) )
 
     Router.post( '/schemakeys/:model', (req, res) => {
       if (!req.body.depth) req.body.depth = 2

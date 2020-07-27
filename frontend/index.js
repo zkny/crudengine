@@ -68,9 +68,9 @@ export default class __API {
       .catch( Error => reject(Error))
     })
   }
-  SchemaKeys(ModelName) {
+  SchemaKeys(ModelName, Depth) {
     return new Promise((resolve, reject) => {
-      this.$axios.$get(`/${this.Prefix}/schemakeys/:${ModelName}`)
+      this.$axios.$post(`/${this.Prefix}/schemakeys/${ModelName}`, { depth: Depth })
       .then( r => resolve(r))
       .catch( Error => reject(Error))
     })
@@ -138,14 +138,21 @@ export default class __API {
         promises.push(this.UploadFile(object[key]))
     }
   }
-  UploadFile( File ) {
+  UploadFile( File, Callback ) {
     return new Promise((resolve, reject) => {
+
+      const config = {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: function(progressEvent) {
+          let percentage = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          Callback(percentage)
+        }
+      }
+
       let formData = new FormData()
 
       formData.append('file', File)
-      this.$axios.$post(`/${this.Prefix}/fileupload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
+      this.$axios.$post(`/${this.Prefix}/fileupload`, formData, config )
         .then( r => resolve(r))
         .catch( Error => reject(Error) )
     })
