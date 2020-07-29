@@ -406,6 +406,13 @@ class CrudEngine {
       res.send(keys)
     })
 
+    Router.get( '/count/:model', (req, res) => {
+      mongoose.model(req.params.model).countDocuments({}, (err, count) => {
+        if(err) res.status(500).send(err)
+        else res.send({count})
+      })
+    })
+
     if(this.FileDIR)
       Router.use( `${this.ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
 
