@@ -141,22 +141,22 @@ class CrudEngine {
   }
   
   GeneratePathSchema(field, acc, prefix = '') {
-    acc[`${prefix}${field.name}`] = field
+    acc[`${prefix}${field.key}`] = field
     if(!field.subheaders) return
 
     for(let f of field.subheaders)
-      this.GeneratePathSchema(f, acc, `${prefix}${field.name}.`)
+      this.GeneratePathSchema(f, acc, `${prefix}${field.key}.`)
   }
 
   GetSchemaKeys(keys, object, prefix, actualDepth, maxDepth){
     if (actualDepth > maxDepth) return
 
-    if (!object["subheaders"]) {
-      keys.push(prefix + object["name"])
+    if (!object.subheaders) {
+      keys.push(prefix + object.key)
       return
     }
     for (var obj of object["subheaders"])
-      this.GetSchemaKeys(keys, obj, prefix + object["name"] + ".", actualDepth + 1, maxDepth)
+      this.GetSchemaKeys(keys, obj, prefix + object.key + ".", actualDepth + 1, maxDepth)
   }
 
   GetPaths(schema, acc = {}, prefix = '') {
@@ -174,23 +174,23 @@ class CrudEngine {
   }
 
   GenerateObjFieldChain(FieldObj, FieldPath, cursor) {
-    let FieldNames = FieldPath.split('.')
-    let lastName = FieldNames[FieldNames.length-1]
+    let FieldKeys = FieldPath.split('.')
+    let lastName = FieldKeys[FieldKeys.length-1]
 
     if( ['_id', '__v', '$'].some(s => lastName == s) ) return
 
-    for( let FieldName of FieldNames.slice(0, FieldNames.length-1) ) {
+    for( let FieldKey of FieldKeys.slice(0, FieldKeys.length-1) ) {
       let ind = 0
-      while( ind < cursor.length && cursor[ind].name != FieldName ) ind++
+      while( ind < cursor.length && cursor[ind].key != FieldKey ) ind++
 
       if(ind == cursor.length)
         cursor.push({
-          name: FieldName,
+          key: FieldKey,
           isArray: false,
           type: 'Object',
           required: false,
           ref:  null,
-          alias: FieldName,
+          name: FieldKey,
           description: null,
           default: null,
           minReadAuth: 300,
@@ -204,14 +204,14 @@ class CrudEngine {
     cursor.push( this.GenerateSchemaField(FieldObj, lastName) )
   }
 
-  GenerateSchemaField(FieldObj, FieldName ) {
+  GenerateSchemaField(FieldObj, FieldKey ) {
     let field = {
-      name: FieldName,
+      key: FieldKey,
       isArray: FieldObj.instance == 'Array',
       type: FieldObj.instance,
       required: FieldObj.options.required || false,
       ref: FieldObj.options.ref || null,
-      alias: FieldObj.options.alias || null,
+      name: FieldObj.options.name || null,
       description: FieldObj.options.description || null,
       default: FieldObj.options.default || null,
       minReadAuth: FieldObj.options.minReadAuth || 300,
@@ -228,7 +228,7 @@ class CrudEngine {
       if(Emb.options.hidden) field.hidden = true
       field.type = Emb.instance || 'Object'
       field.ref = Emb.options.ref || field.ref
-      field.alias = field.alias || Emb.options.alias || null
+      field.name = field.name || Emb.options.name || null
       field.description = field.description || Emb.options.description || null
       field.default = field.default || Emb.options.default || null
       field.minReadAuth = Math.min(field.minReadAuth, (Emb.options.minReadAuth || 300))
@@ -280,8 +280,8 @@ class CrudEngine {
         let type = this.GetCorrectType( item )
         if(type == null)continue
 
-        if(item.isArray) proto += `\trepeated ${type} ${item.name} = ${id};\n`
-        else proto += `\t${type} ${item.name} = ${id};\n`
+        if(item.isArray) proto += `\trepeated ${type} ${item.key} = ${id};\n`
+        else proto += `\t${type} ${item.key} = ${id};\n`
         id++
       }
       proto += "}\n"
@@ -332,24 +332,14 @@ class CrudEngine {
     }
   }
 
-  GetProjection(accesslevel, model, paths = [], include = true) {
-    let projection = {}
-    if(!paths.length) include = false
-
-    if(include) {
-      for(let path in this.PathSchemas[model]) projection[path] = 0
-      for(let path of paths) delete projection[path]
+  RemoveDeclinedFields(accesslevel, fields, object, authField = 'minReadAuth') {
+    for(let field of fields) {
+      if(field[authField] < accesslevel) delete object[field.key]
+      else if(field.subheaders && object[field.key]) {
+        if(field.isArray) return object[field.key].some( obj => this.RemoveDeclinedFields(accesslevel, field.subheaders, obj) )
+        return this.RemoveDeclinedFields(accesslevel, field.subheaders, object[field.key])
+      }
     }
-    else
-      for(let path in paths) projection[path] = 0
-
-    let declinedPaths = this.GetDeclinedReadPaths(accesslevel, model)
-    let roots = this.GetRootsOfPaths(declinedPaths)
-    
-    for(let path of roots) projection[path] = 0
-
-    if(!Object.keys(projection).length) return { __v: 0 }
-    else return projection
   }
 
   GetRootsOfPaths(paths) {
@@ -372,12 +362,8 @@ class CrudEngine {
       if(field.hidden) continue
       let hField = {}
 
-      for(let key of ['alias', 'name', 'description', 'type', 'isArray', 'primary'])
+      for(let key of ['name', 'key', 'description', 'type', 'isArray', 'primary'])
         hField[key] = field[key]
-
-      hField.key = hField.name
-      hField.name = hField.alias
-      delete hField.alias
 
       if(field.subheaders && depth < this.MaxHeaderDepth)
         hField.subheaders = this.GetHeaders(field.subheaders, field.ref ? depth+1 : depth)
@@ -436,14 +422,16 @@ class CrudEngine {
       if(!req.query.sort) req.query.sort = "{}"
 
       const MFunctions = this.Middlewares[req.params.model].R
-      const projection = await this.GetProjection( req.accesslevel, req.params.model, req.query.projection )
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      mongoose.model(req.params.model).find( JSON.parse(req.query.filter), projection )
+      mongoose.model(req.params.model)
+        .find( JSON.parse(req.query.filter), req.query.projection )
+        .lean({ autopopulate: true, virtuals: true, getters: true })
         .sort( JSON.parse(req.query.sort) )
         .skip( Number(req.query.skip) || 0 )
         .limit( Number(req.query.limit) || null )
         .then( async results => {
+          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], result)
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
 
           const ProtoType = this.API.lookupType(`api.${req.params.model}s`)
@@ -463,14 +451,16 @@ class CrudEngine {
 
       const Headers = this.GetHeaders(req.params.model)
       const MFunctions = this.Middlewares[req.params.model].R
-      const projection = await this.GetProjection( req.accesslevel, req.params.model, req.query.projection )
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      mongoose.model(req.params.model).find( JSON.parse(req.query.filter), projection )
+      mongoose.model(req.params.model)
+        .find( JSON.parse(req.query.filter), req.query.projection )
+        .lean({ autopopulate: true, virtuals: true, getters: true })
         .sort( JSON.parse(req.query.sort) )
         .skip( Number(req.query.skip) || 0 )
         .limit( Number(req.query.limit) || null )
         .then( async results => {
+          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], result)
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
 
           res.send({ Headers, Data: results })
@@ -483,14 +473,16 @@ class CrudEngine {
       if(!req.query.sort) req.query.sort = "{}"
 
       const MFunctions = this.Middlewares[req.params.model].R
-      const projection = await this.GetProjection( req.accesslevel, req.params.model, req.query.projection )
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      mongoose.model(req.params.model).find( JSON.parse(req.query.filter), projection )
+      mongoose.model(req.params.model)
+        .find( JSON.parse(req.query.filter), req.query.projection )
+        .lean({ autopopulate: true, virtuals: true, getters: true })
         .sort( JSON.parse(req.query.sort) )
         .skip( Number(req.query.skip) || 0 )
         .limit( Number(req.query.limit) || null )
         .then( async results => {
+          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], result)
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
           res.send(results)
         })
@@ -504,7 +496,6 @@ class CrudEngine {
 
 
       const MFunctions = this.Middlewares[req.params.model].R
-      const projection = await this.GetProjection( req.accesslevel, req.params.model, req.query.projection )
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       mongoose.model(req.params.model).find()
@@ -534,14 +525,14 @@ class CrudEngine {
 
     Router.get( "/:model/:id", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].R
-      const projection = await this.GetProjection( req.accesslevel, req.params.model, req.query.projection )
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      mongoose.model(req.params.model).findOne( { _id: req.params.id }, projection, async (error, results) => {
+      mongoose.model(req.params.model).findOne( { _id: req.params.id }, req.query.projection, async (error, results) => {
         if(error) return res.status(500).send(error)
         if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
+        this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], results)
         res.send(results)
-      })
+      }).lean({ autopopulate: true, virtuals: true, getters: true })
     })
 
     if(this.FileDIR) {
