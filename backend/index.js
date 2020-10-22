@@ -31,6 +31,22 @@ class CrudEngine {
     this.API              = false
     this.MaxHeaderDepth   = MaxHeaderDepth
 
+    console.log('\x1b[36m%s\x1b[0m', `
+CRUDENGINE WARNING:
+BREAKING CHANGES since version 1.4.2:
+
+The following config fields were renamed:
+  • alias -> name,
+  • minReadAuth -> minReadAccess
+  • minWriteAuth -> minWriteAccess
+  
+  Please update them, to have all the functionalities
+
+The way accesslevel is handled has also changed.
+The default accesslevel is now 0 and the higher an accesslevel is on a field, the higher accesslevel is needed to modify it.
+There is also no maximum accesslevel.
+    `)
+
     if (FileDIR) {
       if(!fs.existsSync(FileDIR))
         fs.mkdirSync(path.resolve(FileDIR), { recursive: true })
@@ -194,8 +210,8 @@ class CrudEngine {
           name: FieldKey,
           description: null,
           default: null,
-          minReadAuth: 300,
-          minWriteAuth: 300,
+          minReadAccess: 0,
+          minWriteAccess: 0,
           subheaders: []
         })
 
@@ -215,8 +231,8 @@ class CrudEngine {
       name: FieldObj.options.name || null,
       description: FieldObj.options.description || null,
       default: FieldObj.options.default || null,
-      minReadAuth: FieldObj.options.minReadAuth === undefined ? 300 : FieldObj.options.minReadAuth,
-      minWriteAuth: FieldObj.options.minWriteAuth === undefined ? 300 : FieldObj.options.minWriteAuth,
+      minReadAccess: FieldObj.options.minReadAccess || 0,
+      minWriteAccess: FieldObj.options.minWriteAccess || 0,
     }
     if(FieldObj.options.primary) field.primary = true
     if(FieldObj.options.hidden) field.hidden = true
@@ -232,8 +248,8 @@ class CrudEngine {
       field.name = field.name || Emb.options.name || null
       field.description = field.description || Emb.options.description || null
       field.default = field.default || Emb.options.default || null
-      field.minReadAuth = Math.min(field.minReadAuth, (Emb.options.minReadAuth === undefined ? 300 : Emb.options.minReadAuth))
-      field.minWriteAuth = Math.min(field.minWriteAuth, (Emb.options.minWriteAuth === undefined ? 300 : Emb.options.minWriteAuth))
+      field.minReadAccess = Math.max(field.minReadAccess, (Emb.options.minReadAccess || 0))
+      field.minWriteAccess = Math.max(field.minWriteAccess, (Emb.options.minWriteAccess || 0))
     }
 
     if(field.type == 'ObjectID') field.type = 'Object'
@@ -244,16 +260,16 @@ class CrudEngine {
     else if(field.type == 'Mixed') {
       field.type = 'Object'
       console.log('\x1b[36m%s\x1b[0m', `
-        CRUDENGINE WARNING:
-        Fields with mixed type can not be traced, due to limitation!
-        To get subheaders use the following syntax:
-        field: {
-          type: new Schema({subfield: String})
-        }
-        Instead of:
-        field: {
-          type: {subfield: String}
-        }
+CRUDENGINE WARNING:
+Fields with mixed type can not be traced, due to limitation!
+To get subheaders use the following syntax:
+field: {
+  type: new Schema({subfield: String})
+}
+Instead of:
+field: {
+  type: {subfield: String}
+}
       `)
     }
 
@@ -306,14 +322,14 @@ class CrudEngine {
     }
   }
 
-  GetDeclinedPaths(accesslevel = 300, model, authField = 'minReadAuth') {
-    let declinedEntrs = Object.entries(this.PathSchemas[model]).filter(entr => entr[1][authField] < accesslevel)
+  GetDeclinedPaths(accesslevel = 300, model, authField = 'minReadAccess') {
+    let declinedEntrs = Object.entries(this.PathSchemas[model]).filter(entr => entr[1][authField] > accesslevel)
     return declinedEntrs.map(entr => entr[0])
   }
 
-  RemoveDeclinedFields(accesslevel, fields, object, authField = 'minReadAuth') {
+  RemoveDeclinedFields(accesslevel, fields, object, authField = 'minReadAccess') {
     for(let field of fields) {
-      if(field[authField] < accesslevel) delete object[field.key]
+      if(field[authField] > accesslevel) delete object[field.key]
       else if(field.subheaders && object[field.key]) {
         if(field.isArray) object[field.key].some( obj => this.RemoveDeclinedFields(accesslevel, field.subheaders, obj, authField) )
         this.RemoveDeclinedFields(accesslevel, field.subheaders, object[field.key], authField)
@@ -550,7 +566,7 @@ class CrudEngine {
 
     Router.post( "/:model", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].C
-      this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], req.body, 'minWriteAuth')
+      this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], req.body, 'minWriteAccess')
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       const Mod = mongoose.model(req.params.model)
       const results = new Mod(req.body)
@@ -563,7 +579,7 @@ class CrudEngine {
 
     Router.patch( "/:model", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].U
-      this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], req.body, 'minWriteAuth')
+      this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], req.body, 'minWriteAccess')
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       mongoose.model(req.params.model).updateOne({ _id: req.body._id }, req.body, async (error, results) => {
@@ -575,7 +591,7 @@ class CrudEngine {
 
     Router.delete( "/:model/:id", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].D
-      const declinedPaths = this.GetDeclinedPaths(req.accesslevel, req.params.model, 'minWriteAuth')
+      const declinedPaths = this.GetDeclinedPaths(req.accesslevel, req.params.model, 'minWriteAccess')
 
       if(declinedPaths.length) return res.status(500).send('EPERM')
 

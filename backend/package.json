@@ -1,7 +1,7 @@
 {
   "name": "crudengine",
-  "version": "1.4.2",
-  "description": "crudengine, crud operation helper, file handling, auth, access management, framework, nodejs, mongoose, express",
+  "version": "1.4.3",
+  "description": "crudengine, crud operation helper, file handling, access management, framework, nodejs, mongoose, express",
   "main": "index.js",
   "scripts": {
     "test": "test",
