@@ -396,9 +396,9 @@ try {
 ```
 
 #### Exceptions:
-* No model found with name: ${modelname}
-* Operation should be one of: [ 'C', 'R', 'U', 'D' ]
-* Timing should be one of: [ 'after', 'before' ]
+* Middleware: No model found with name: ${modelname}
+* Middleware: Operation should be one of: [ 'C', 'R', 'U', 'D' ]
+* Middleware: Timing should be one of: [ 'after', 'before' ]
 
 <a name="services"></a>
 ## Services

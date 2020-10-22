@@ -42,12 +42,12 @@ class CrudEngine {
       const ServiceFileArray = fs.readdirSync( ServiceDIR )
       for( const ServiceFile of ServiceFileArray ) {
         if( ServiceFile == '.DS_Store' || ServiceFile.includes('.map') ) continue
-
+        
         const ServiceName = ServiceFile
         .replace( '.js', '' )
         .replace( '.ts', '' )
         .replace( '.coffee', '' )
-
+        
         this.Services[ServiceName] = require(`${ServiceDIR}/${ServiceFile}`)
       }
     }
@@ -142,12 +142,13 @@ class CrudEngine {
   
   GeneratePathSchema(field, acc, prefix = '') {
     acc[`${prefix}${field.key}`] = field
-    if(!field.subheaders) return
+    if(!field.subheaders || field.ref) return
 
     for(let f of field.subheaders)
       this.GeneratePathSchema(f, acc, `${prefix}${field.key}.`)
   }
 
+  // TODO
   GetSchemaKeys(keys, object, prefix, actualDepth, maxDepth){
     if (actualDepth > maxDepth) return
 
@@ -155,7 +156,7 @@ class CrudEngine {
       keys.push(prefix + object.key)
       return
     }
-    for (var obj of object["subheaders"])
+    for (let obj of object["subheaders"])
       this.GetSchemaKeys(keys, obj, prefix + object.key + ".", actualDepth + 1, maxDepth)
   }
 
@@ -214,8 +215,8 @@ class CrudEngine {
       name: FieldObj.options.name || null,
       description: FieldObj.options.description || null,
       default: FieldObj.options.default || null,
-      minReadAuth: FieldObj.options.minReadAuth || 300,
-      minWriteAuth: FieldObj.options.minWriteAuth || 300,
+      minReadAuth: FieldObj.options.minReadAuth === undefined ? 300 : FieldObj.options.minReadAuth,
+      minWriteAuth: FieldObj.options.minWriteAuth === undefined ? 300 : FieldObj.options.minWriteAuth,
     }
     if(FieldObj.options.primary) field.primary = true
     if(FieldObj.options.hidden) field.hidden = true
@@ -231,8 +232,8 @@ class CrudEngine {
       field.name = field.name || Emb.options.name || null
       field.description = field.description || Emb.options.description || null
       field.default = field.default || Emb.options.default || null
-      field.minReadAuth = Math.min(field.minReadAuth, (Emb.options.minReadAuth || 300))
-      field.minWriteAuth = Math.min(field.minWriteAuth, (Emb.options.minWriteAuth || 300))
+      field.minReadAuth = Math.min(field.minReadAuth, (Emb.options.minReadAuth === undefined ? 300 : Emb.options.minReadAuth))
+      field.minWriteAuth = Math.min(field.minWriteAuth, (Emb.options.minWriteAuth === undefined ? 300 : Emb.options.minWriteAuth))
     }
 
     if(field.type == 'ObjectID') field.type = 'Object'
@@ -305,53 +306,19 @@ class CrudEngine {
     }
   }
 
-  GetDeclinedReadPaths(accesslevel = 300, model) {
-    return Object.entries(this.PathSchemas[model])
-      .filter( entr => entr[1].minReadAuth < accesslevel )
-      .map( entr => entr[0])
-  }
-
-  GetDeclinedWritePaths(accesslevel = 300, model) {
-    let declinedEntrs = Object.entries(this.PathSchemas[model]).filter( entr => entr[1].minWriteAuth < accesslevel )
-    if( declinedEntrs.filter(entr => entr[1].required).length ) return null
+  GetDeclinedPaths(accesslevel = 300, model, authField = 'minReadAuth') {
+    let declinedEntrs = Object.entries(this.PathSchemas[model]).filter(entr => entr[1][authField] < accesslevel)
     return declinedEntrs.map(entr => entr[0])
-  }
-
-  RemoveDeclinedParts(declienedPaths, object) {
-    outer: for(let path of declienedPaths) {
-      let acc = object
-      let keys = path.split('.')
-      let lastKey = keys.pop()
-
-      for(let key of keys) {
-        acc = acc[key]
-        if(acc == undefined) continue outer
-      }
-
-      delete acc[lastKey]
-    }
   }
 
   RemoveDeclinedFields(accesslevel, fields, object, authField = 'minReadAuth') {
     for(let field of fields) {
       if(field[authField] < accesslevel) delete object[field.key]
       else if(field.subheaders && object[field.key]) {
-        if(field.isArray) return object[field.key].some( obj => this.RemoveDeclinedFields(accesslevel, field.subheaders, obj) )
-        return this.RemoveDeclinedFields(accesslevel, field.subheaders, object[field.key])
+        if(field.isArray) object[field.key].some( obj => this.RemoveDeclinedFields(accesslevel, field.subheaders, obj, authField) )
+        this.RemoveDeclinedFields(accesslevel, field.subheaders, object[field.key], authField)
       }
     }
-  }
-
-  GetRootsOfPaths(paths) {
-    if(!paths.length) return []
-
-    let roots = [paths[0]]
-    for(let path of paths) {
-      if(path.indexOf(roots[roots.length-1]) !== 0)
-        roots.push(path)
-    }
-
-    return roots
   }
 
   GetHeaders( model, depth = 0 ) {
@@ -489,6 +456,7 @@ class CrudEngine {
         .catch( error => res.status(500).send(error) )
     })
 
+    // TODO
     Router.post( '/search/:model', async (req, res) => {
       // props: pattern, depth, keys, threshold
       if(!req.body.depth)     req.body.depth = 2
@@ -518,7 +486,10 @@ class CrudEngine {
           }
 
           const fuse = new Fuse(allData, options)
-          res.send(fuse.search(req.body.pattern))
+
+          let results = fuse.search(req.body.pattern)
+          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], result)
+          res.send(results)
         })
         .catch( error => res.status(500).send(error) )
     })
@@ -536,6 +507,7 @@ class CrudEngine {
     })
 
     if(this.FileDIR) {
+      // TODO
       Router.post( "/fileupload", this.upload.single('file'), (req, res) => {
         if(req.file.mimetype.split('/')[0] == 'image') return this.handleImageUpload(req, res)
 
@@ -557,6 +529,7 @@ class CrudEngine {
         })
       })
 
+      // TODO
       Router.delete( "/filedelete/:id", (req, res) => {
         CRUDFile.findOne({_id: req.params.id})
           .then( file => {
@@ -577,11 +550,7 @@ class CrudEngine {
 
     Router.post( "/:model", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].C
-      const declinedPaths = this.GetDeclinedWritePaths(req.accesslevel, req.params.model)
-
-      if(declinedPaths == null) return res.status(500).send('EPERM')
-      this.RemoveDeclinedParts(declinedPaths, req.body)
-
+      this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], req.body, 'minWriteAuth')
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       const Mod = mongoose.model(req.params.model)
       const results = new Mod(req.body)
@@ -594,10 +563,7 @@ class CrudEngine {
 
     Router.patch( "/:model", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].U
-      const declinedPaths = this.GetDeclinedWritePaths(req.accesslevel, req.params.model)
-
-      if(declinedPaths == null) return res.status(500).send('EPERM')
-      this.RemoveDeclinedParts(declinedPaths, req.body)
+      this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], req.body, 'minWriteAuth')
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       mongoose.model(req.params.model).updateOne({ _id: req.body._id }, req.body, async (error, results) => {
@@ -609,9 +575,9 @@ class CrudEngine {
 
     Router.delete( "/:model/:id", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].D
-      const declinedPaths = this.GetDeclinedWritePaths(req.accesslevel, req.params.model)
+      const declinedPaths = this.GetDeclinedPaths(req.accesslevel, req.params.model, 'minWriteAuth')
 
-      if(declinedPaths == null || declinedPaths.length) return res.status(500).send('EPERM')
+      if(declinedPaths.length) return res.status(500).send('EPERM')
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       mongoose.model(req.params.model).deleteOne({ _id: req.params.id }, async (error, results) => {
@@ -624,6 +590,7 @@ class CrudEngine {
     return Router
   }
 
+  // TODO
   handleImageUpload(req, res) {
     let file          = JSON.parse(JSON.stringify(req.file))
     let extension     = file.originalname.split('.').pop()
@@ -676,9 +643,9 @@ class CrudEngine {
 
   addMiddleware( modelname, operation, timing, middlewareFunction ) {
     return new Promise( (resolve, reject) => {
-      if( !this.Middlewares[modelname] ) return reject( new Error(`No model found with name: ${modelname}`) )
-      if( !this.Operations.includes(operation) ) return reject( new Error(`Operation should be one of: ${this.Operations}`) )
-      if( !this.Timings.includes(timing) ) return reject( new Error(`Timing should be one of: ${this.Timings}`) )
+      if( !this.Middlewares[modelname] ) return reject( new Error(`Middleware: No model found with name: ${modelname}`) )
+      if( !this.Operations.includes(operation) ) return reject( new Error(`Middleware: Operation should be one of: ${this.Operations}`) )
+      if( !this.Timings.includes(timing) ) return reject( new Error(`Middleware: Timing should be one of: ${this.Timings}`) )
 
       this.Middlewares[modelname][operation][timing] = `(${middlewareFunction.toString()})()`
       return resolve('Middleware added')
