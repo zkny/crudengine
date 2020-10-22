@@ -1,6 +1,6 @@
 {
   "name": "crudengine",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "crudengine, crud operation helper, file handling, access management, framework, nodejs, mongoose, express",
   "main": "index.js",
   "scripts": {
@@ -29,6 +29,7 @@
   "dependencies": {
     "multer": "^1.4.2",
     "protobufjs": "^6.9.0",
-    "sharp": "^0.25.2"
+    "sharp": "^0.25.2",
+    "fuse.js": "^6.4.2"
   }
 }
