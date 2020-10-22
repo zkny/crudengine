@@ -106,7 +106,7 @@ Options:
 |:-:|:-:|:-:|:-:|
 | projection | Fields to include in [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html). | array of strings | ['name'] |
 
-### ProtoRead
+### ProtoRead [BETA]
 > The same as Read but uses [protobuf](https://developers.google.com/protocol-buffers) for speed. 😎
 * Method: GET
 * Resolves into: ArrayBuffer
@@ -127,7 +127,7 @@ Params:
 
 
 ### TableHeaders
->  Get the keys, aliases and descriptions for the schema and for the subschemas (refs to other schemas). E.g useful for tables.
+> Get the keys, names, descriptions and other meaningful properties for the schema and for the subschemas (refs to other schemas). E.g.: useful for tables.
 * Methods: GET
 * Resolves into: Array of Objects
 ```javascript
@@ -260,7 +260,7 @@ Params:
 | skip | 	The number of documents to skip in the results set. | number | 10 |
 | limit |  	The number of documents to include in the results set. | number | 10 |
 
-### ProtoTable
+### ProtoTable [BETA]
 > Combines the TableHeaders and the ProtoRead function into one function.
 * Method: GET
 * Resolves into: { Headers, Data }
