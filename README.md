@@ -1,3 +1,4 @@
+
 ## Crudengine
 
 > Crudengine is a program to help us to get rid of boilerplate programing. The goal of this
@@ -7,35 +8,34 @@ of this, check it out [here](https://www.npmjs.com/package/vue-crudengine)!
 
 ##### If you find any problems please let us know [here](https://github.com/zkny/crudengine/issues)!
 
+## Disclaimer
+This package is very much under development and all functions are subject to change. Also some functionality may not be documented or they might not work at all.
 
-## The basics
-First we create an instance of the crudengine by telling it where we will place our
-schemas and services. Our schemas are basically the [mongoose models](https://mongoosejs.com/docs/models.html). The services are functions that we would like to run, but we don't want to register them as an independent route. But more about this later.
+If you find anything that isn't working or not up to the documentation let us know or create a pull request over on github. Thank You in advance!
 
 ## Table of contents
 
 * [Prerequisites](#prerequisites)
 * [Install](#install)
 * [Important notes](#notes)
+* [Schemas](#schemas)
 * [Routes](#routes)
   * [Read](#read)
   * [Create](#create)
   * [Update](#update)
   * [Delete](#delete)
-* [Schemas](#schemas)
 * [Middleware](#middleware)
 * [Services](#services)
 * [Working with files](#files)
 * [About protobuf](#proto) [BETA]
-* [Auth](#auth)
-* [Changle log](#change)
+* [Field Access](#fieldaccess)
 * [TODO](#todo)
 
 <a name="prerequisites"></a>
 ## Prerequisites
 * Use express
 * Use mongoose
-* Use mongoose-autopopulate (required for file handling)
+* Use mongoose-autopopulate (required only for file handling)
 
 <a name="install"></a>
 ## Getting started
@@ -44,12 +44,14 @@ const crudengine = require("crudengine");
 
 const crud = new crudengine({
   SchemaDIR: path.resolve(__dirname, './schemas'),
+  MongooseConnection: mongoose.connection, // [Optional] Only needed if using mongoose.createConnection() not mongoose.connect()
   ServiceDIR: path.resolve(__dirname, './services'), // [Optional] Services should be in this folder, if needed
-  FileDIR: path.resolve(__dirname, './files'), // [Optional] This will become the /static folder for crudengine
+  FileDIR: path.resolve(__dirname, './files'), // [Optional] This will become the /static or what we set as   ServeStaticPath
+  ServeStaticPath: '/static', // [Optional] default /static
   ImageHeightSize: 1500, // [Optional] Image compression to given size, defaults to 800
   Thumbnail: false, // [Optional] Automatically save a thumbnail version for images, defaults to false
-  ThumbnailSize: 500 // [Optional] Thumbnail compression to given size, defaults to 250
-  MaxHeaderDepth: 3 // [Optional] Table headers will be traced till this depth recursively (default = 3)
+  ThumbnailSize: 500, // [Optional] Thumbnail compression to given size, defaults to 250
+  MaxHeaderDepth: 2, // [Optional] Table headers will be traced till this depth recursively (default = 2, starts from 0)
 }); // create the instance
 
 Router.use(someGenericAuthMiddlware) // no auth, no data
@@ -66,23 +68,82 @@ Fields with mixed type can not be traced, due to limitation
 ```js
 // To get subheaders use the following syntax:
 field: {
-  subfield: String
+  type: new Schema({subfield: String}),
+  name: ...
 }
 
 // Instead of:
 field: {
-  type: {subfield: String}
+  type: {subfield: String},
+  name: ...
 }
 
 // Using the second example, will not effect functionality, but the tableheaders won't show up for the object.
 ```
 
-#### Proto limitations
+#### Proto (beta) limitations
 * The problem with this is that you can only use camelCase and no snake_case in the schema keys. Also we have to decode the data in the frontend, but if we use the [vue-crudengine](https://www.npmjs.com/package/vue-crudengine) (which is recommended anyway) package as well, it is done for us.
+
+##### Important notes
+> Bit of information to keep in mind.
 
 * Before sending updates with data coming from proto routes, you have to JSON.stringify the data first, otherwise JSON.parse will fail. This is done automatically in [vue-crudengine](https://www.npmjs.com/package/vue-crudengine).
 
 * Custom objects (mixed type) in schemas will not be detected by the proto file generator.
+
+
+
+<a name="schemas"></a>
+## Schemas
+No snake_case if you want protobuf!
+
+If the accesslevel number system means nothing to you go to the field access [section](#fieldaccess).
+
+| Param    |  Description                                                   | required |
+|:--------:|--------------------------------------------------------------|:-----:|
+| name    |  This could be what we display. username: { name: "Caller" }  | false |
+| description | This could be displayed on hover. username: { description: "this is how we call the around here" } |  false |
+| minWriteAccess | A positive number, the higher the better, if it is 200 you need accesslevel above 200 to create, update or delete this field |  defaults to 0 |
+| minReadAccess | same as minWriteAccess but for reading it|  defaults to 0 |
+| primary | eg. Show this fields value when this document is needed to be shown in a table cell |  defaults to false |
+| hidden | Fields marked as hidden will not be included in table headers |  defaults to false |
+
+> What primary does is up to you.
+
+##### The name of the file must be the name of the schema. So brand.js should contain the Brand model
+
+```javascript
+// This is the schemas/brand.js file
+const mongoose = require("mongoose");
+const autopopulate = require("mongoose-autopopulate"); // only needed because of file handling
+
+const BrandSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    name: "Company", // I will display this for the user instead of name
+    description: "Unique name of the brand owner comany", // This is silly I know
+    minWriteAccess: 100, // You have to be admin (have an accesslevel of 100 or higher) to change this
+    minReadAccess: 0, // But you don't have to be admin to see it
+    primary: true
+  },
+  arrayOfThings: {
+    type: [new mongoose.Schema({
+      name: { type: String, name: "One thing I don't like" }
+    })],
+    name: "List of thing I don't like"
+  },
+  files: {
+    type: [{ type: ObjectId, ref: "CRUDFile", autopopulate: true, name: "File" }], // File refrences will be stored in this special schema.
+	name: "Files",
+	hidden: true
+  }
+}, { selectPopulatedPaths: false }); // We need to add this, or autopopulated fields will always be there regardless of the projection.
+
+BrandSchema.plugin(autopopulate); // For file handling functionalities https://www.npmjs.com/package/mongoose-autopopulate
+module.exports = mongoose.model('Brand', BrandSchema); //export the model as usual
+
+```
 <a name="routes"></a>
 ## Routes
 
@@ -98,6 +159,35 @@ All off the routes start with whatever we give them when we register them in the
 axios.get('/api/schema')
 ```
 
+###  /schema/:model
+>Special route that returns everything there is to know about a schema.
+* Method: GET
+* Returns: Object
+
+```javascript
+axios.get('/api/schema/User')
+```
+
+###  /schemakeys/:model
+> Returns the key paths to the schema
+
+* Method: GET
+* Returns: Array of Strings
+
+```javascript
+axios.get('/api/schemakeys/User')
+
+// the following will result in ['name.surname', name.firstname]
+User: {
+  name: {
+    surname: "Doe",
+    firstname: "John"
+  }
+}
+
+```
+
+
 ### /:model/find
 >Returns documents for the schema.
 * Method: GET
@@ -105,7 +195,7 @@ axios.get('/api/schema')
 ```javascript
 axios.get('/api/User/find', {
   params: {
-	  filter: { email: { $existCRUD operation helper class for node.js + mongoose + expresss: true } },
+	  filter: { email: { $exists: true } },
 	  projection: [ 'username', 'email' ],
 	  sort: { username: 1 },
 	  skip: 0,
@@ -117,7 +207,7 @@ Params:
 
 | key | description | type | example |
 |:-:|-|:-:|:-:|
-| filter | [Mongodb query](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.htmls) | Object | { age: 18 } |
+| filter | [Mongodb query](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.htmls) | object | { age: 18 } |
 | projection | Fields to include in results. Uses mongodb [projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/index.html). | array of strings | ['name'] |
 | sort | [Mongodb sort](https://docs.mongodb.com/manual/reference/method/cursor.sort/index.html) | object | { age : -1 } |
 | skip | 	The number of documents to skip in the results set. | number | 10 |
@@ -169,7 +259,7 @@ Params:
 
 
 ### /tableheaders/:model
->  Get the keys, aliases and descriptions for the schema and for the subschemas (refs to other schemas).
+>  Get the keys, names, descriptions and other meaningful properties for the schema and for the subschemas (refs to other schemas).
 * Methods: GET
 * Returns: Array of Objects
 ```javascript
@@ -239,60 +329,11 @@ axios.delete('/api/Book/507f191e810c19729de860ea')
 ```
 
 ### /filedelete
->Deletes a file at a specified path. Crudengine will not allow deleting files outside its static folder. If there is, deletes the thumbnail as well.
+>Deletes a file from CRUDFile.
 * Method: DELETE
 * Returns: empty response
 ```js
-axios.delete(`/api/filedelete`, {
-  data: {
-    path: '/static/myFilesUniqueName.jpg'
-  }
-})
-```
-
-<a name="schemas"></a>
-## Schemas
-For this to work we need to create valid mongoose schemas, but we should add some extra things.
-No snake_case if you want protobuf!
-
-> Note protobuf can't use custom objects, but we can use refs instead.
-
-If the accesslevel number system means nothing to you go to the auth [section](#auth).
-
-| Param    |  Description                                                   | required |
-|:--------:|--------------------------------------------------------------|:-----:|
-| alias    |  This could be what we display. username: { alias: "Caller" }  | false |
-| description | This could be displayed on hover. username: { description: "this is how we call the around here" } |  false |
-| minWriteAuth | Number from 100 to 300, the smaller the better, if its 200 you need accesslevel below 200 to update or create this field |  defaults to 300 |
-| minReadAuth | same as minWriteAuth but for reading it|  defaults to 300 |
-
-
-
-
-##### The name of the file must be the name of the schema. So brand.js should contain the Brand model
-
-```javascript
-// This is the schemas/brand.js file
-const mongoose = require("mongoose");
-const autopopulate = require("mongoose-autopopulate");
-
-const BrandSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    alias: "Company", // I will display this for the user instead of name
-    description: "Unique name of the brand owner comany", // This is silly I know
-    minWriteAuth: 200, // You have to be admin to change this
-    minReadAuth: 300 // But you don't have to be admin to see it
-  },
-  files: { type: [
-		{ type: ObjectId, ref: "CRUDFile", autopopulate: true, alias: "File" } // File refrences will be stored in this special schema.
-	], alias: "Files" }
-}, { selectPopulatedPaths: false }); // We need to add this, or autopopulated fields will always be there regardless of the projection.
-
-BrandSchema.plugin(autopopulate); // You should always use [autopopulate](https://www.npmjs.com/package/mongoose-autopopulate) because its awesome
-module.exports = mongoose.model('Brand', BrandSchema); //export the model as usual
-
+axios.delete(`/api/filedelete/:id`)
 ```
 <a name="middleware"></a>
 ## Addig custom middleware
@@ -308,9 +349,9 @@ of the variables used. In before that would be typically the req, res and projec
 -   **shared variables**
     -   **req**: Request
     -   **res**: Response
-    -   **projection**: Array of Objects - [MongoDB projection](https://docs.mongodb.com/manual/reference/method/db.collection.find/#find-projection)
+    -   **projection**: Array of Strings - Fields to be included in the results
 -   **Only "after" variables**
-    -   **results**: Any - the results from the database query.
+    -   **results**: Any - the result(s) from the database query.
   > Do not overwrite these variables!
 
 Add middleware with the addMiddleware function like.
@@ -356,9 +397,9 @@ try {
 ```
 
 #### Exceptions:
-* No model found with name: ${modelname}
-* Operation should be one of: [ 'C', 'R', 'U', 'D' ]
-* Timing should be one of: [ 'after', 'before' ]
+* Middleware: No model found with name: ${modelname}
+* Middleware: Operation should be one of: [ 'C', 'R', 'U', 'D' ]
+* Middleware: Timing should be one of: [ 'after', 'before' ]
 
 <a name="services"></a>
 ## Services
@@ -388,18 +429,18 @@ module.exports = Services
 
 <a name="files"></a>
 ## Working with files
-Crudengine creates a CRUDFile schema to store information about the files it handles. This special schema will not show up in schemas if you request the schemas. If we want to store files, crudengine can do that for us via the fileupload route. File are served on /api/static/file.path regardless of what you give as FileDIR.
-> vue-crudengine automagically stores files when they are included in a create. In update it will also upload files and handle them, but it will not delete files. If we want to delete a file we need to use the filedelete route.
+Crudengine creates a CRUDFile schema to store information about the files it handles. This special schema will not show up in schemas if you request the schemas. If we want to store files, crudengine can do that for us via the fileupload route. File are served on /api/${ServeStaticPath}/file.path regardless of what you give as FileDIR.
+> [vue-crudengine](https://www.npmjs.com/package/vue-crudengine) automagically stores files when they are included in a create. The update will not delete files. If we want to delete a file we need to use the filedelete route. There is also a route to download files for us. This is needed if you are using authentication middleware for crudengine routes. (what you should)
 
 ```js
 // CRUDFile schema
 {
-  name         : { type: String,  alias: "File name",      description: "Name of the saved file",                              required: true },
-  path         : { type: String,  alias: "File path",      description: "Path of the saved file",                              required: true },
-  size         : { type: Number,  alias: "File size",      description: "Size of the saved file",                              required: true },
-  extension    : { type: String,  alias: "File extension", description: "Extension of the saved file",                         required: true },
-  isImage      : { type: Boolean, alias: "Is image?",      description: "Indicates whether the saved file is an image or not", default: false },
-  thumbnailPath: { type: String,  alias: "Thumbnail path", description: "Path of the saved thumbnail",                         default: null  },
+  name: { type: String,  name: "File name", description: "Name of the saved file", required: true, primary: true },
+  path: { type: String,  name: "File path", description: "Path of the saved file", required: true },
+  size: { type: Number,  name: "File size", description: "Size of the saved file", required: true },
+  extension: { type: String,  name: "File extension", description: "Extension of the saved file", required: true },
+  isImage: { type: Boolean, name: "Is image?", description: "Indicates whether the saved file is an image or not", default: false },
+  thumbnailPath: { type: String,  name: "Thumbnail path", description: "Path of the saved thumbnail",                         default: null },
 }
 ```
 
@@ -417,25 +458,16 @@ If we want to decode the data crudengine serves the .proto file at /api/protofil
 * Custom objects (mixed type) in schemas will not be detected by the proto file generator.
 
 > You've been warned
-<a name="auth"></a>
-## Auth
-In this system we expect to have the accesslevel number added by a middleware to the req (as req.accesslevel), for authentication purposes. If we can't find it the accesslevel will be set to 300.
+<a name="fieldaccess"></a>
+## Field access
+In this system we expect to have an access level number added by a middleware to the req (as req.accesslevel), for authentication purposes. If we can't find it the accesslevel will be set to 0 by default.
 
-If we do find it, we can modify what the user who issues the request can see based on the access level. So if a field requires minReadAuth of 200 then a user with accesslevel of 300
-will get the field removed from the results. In case of update or create the minWriteAuth will rule. If there is a missmatch the request will fail with status 500 and a message saying 'EPERM'.
+If we do find it, we can modify what the user who issues the request can see/modify based on the access level. So if a field requires minReadAccess of 100 then a user with an accesslevel of 50 will get the field removed from the results. In case of update or create the minWriteAccess will rule. If someone is trying to delete a document with a field with greater minWriteAccess then the users accesslevel, then the request will fail and the 'EPERM' message will be sent back.
 
-<a name="change"></a>
-## Changelog
-
-* 2020-05-05 Missing variable in .proto file when using Boolean fixed.
-* 2020-05-25 File handling added.
 
 <a name="todo"></a>
 ## TODO
-* add prerequisites
 * Fix protofile generator for custom objects (mixed type)
-* CRUDFile subheaders won't show up in tableheaders
-* Fix subdocument auth access
 
 
 ## Authors
@@ -446,4 +478,3 @@ will get the field removed from the results. In case of update or create the min
 Email us at <a href="mailto:balzs.zkny9@gmail.com">zkny</a> or <a href="mailto:horvbalint99@gmail.com">horvbalint</a>
 
 or visit the [github page](https://github.com/zkny/crudengine)
-CRUD operation helper class for node.js + mongoose + express
