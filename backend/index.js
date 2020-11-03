@@ -1,5 +1,4 @@
 const express       = require('express')
-const mongoose      = require('mongoose')
 const fs            = require('fs')
 const path          = require('path')
 const { load }      = require('protobufjs')
@@ -12,24 +11,26 @@ const Router = express.Router()
 
 class CrudEngine {
 
-  constructor({SchemaDIR, ServiceDIR = null, FileDIR = null, ServeStaticPath = '/static', ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2 }) {
-    this.Schemas          = {}
-    this.PathSchemas      = {}
-    this.DecycledSchemas  = {}
-    this.CRUDFileShema    = []
-    this.Services         = {}
-    this.Middlewares      = {}
-    this.Operations       = ['C', 'R', 'U', 'D']
-    this.Timings          = ['after', 'before']
-    this.ImageHeightSize  = ImageHeightSize
-    this.Thumbnail        = Thumbnail
-    this.ThumbnailSize    = ThumbnailSize
-    this.FileDIR          = FileDIR
-    this.ServeStaticPath  = ServeStaticPath
-    this.SchemaDIR        = SchemaDIR
-    this.ServiceDIR       = ServiceDIR
-    this.API              = false
-    this.MaxHeaderDepth   = MaxHeaderDepth
+  constructor({MongooseConnection = require('mongoose'), SchemaDIR, ServiceDIR = null, FileDIR = null, ServeStaticPath = '/static', ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2 }) {
+    this.BaseDBString         = MongooseConnection.connections[0]._connectionString
+    this.Schemas              = {[this.BaseDBString]: {}}
+    this.PathSchemas          = {}
+    this.DecycledSchemas      = {}
+    this.CRUDFileShema        = []
+    this.Services             = {}
+    this.Middlewares          = {}
+    this.Operations           = ['C', 'R', 'U', 'D']
+    this.Timings              = ['after', 'before']
+    this.MongooseConnection   = MongooseConnection
+    this.ImageHeightSize      = ImageHeightSize
+    this.Thumbnail            = Thumbnail
+    this.ThumbnailSize        = ThumbnailSize
+    this.FileDIR              = FileDIR
+    this.ServeStaticPath      = ServeStaticPath
+    this.SchemaDIR            = SchemaDIR
+    this.ServiceDIR           = ServiceDIR
+    this.API                  = false
+    this.MaxHeaderDepth       = MaxHeaderDepth
 
     console.log('\x1b[36m%s\x1b[0m', `
 CRUDENGINE WARNING:
@@ -57,7 +58,7 @@ There is also no maximum accesslevel.
     if( ServiceDIR ) {
       const ServiceFileArray = fs.readdirSync( ServiceDIR )
       for( const ServiceFile of ServiceFileArray ) {
-        if( ServiceFile == '.DS_Store' || ServiceFile.includes('.map') ) continue
+        if( !ServiceFile.endsWith('.js') ) continue
         
         const ServiceName = ServiceFile
         .replace( '.js', '' )
@@ -99,17 +100,16 @@ There is also no maximum accesslevel.
 
   GenerateSchemas(RawSchemas) {
     for(let modelName in RawSchemas)
-      this.Schemas[modelName] = this.GenerateSchema(RawSchemas[modelName])
+    this.Schemas[this.BaseDBString][modelName] = this.GenerateSchema(RawSchemas[modelName])
 
-    for(let modelName in this.Schemas) {
-      for(const FieldObj of this.Schemas[modelName])
-      this.plugInFieldRef(FieldObj)
-    }
+    for(let DBString in this.Schemas)
+      for(let modelName in this.Schemas[DBString])
+        for(const FieldObj of this.Schemas[DBString][modelName])
+          this.plugInFieldRef(FieldObj)
   }
 
   GenerateSchema(RawSchema) {
-    const CurrSchema = RawSchema.schema
-    const Paths = this.GetPaths(CurrSchema)
+    const Paths = this.GetPaths(RawSchema.schema)
     let fields = []
 
     for(const FieldPath in Paths)
@@ -119,9 +119,9 @@ There is also no maximum accesslevel.
   }
 
   GenerateDecycledSchemas() {
-    for(let schema in this.Schemas) {
-      this.DecycledSchemas[schema] = this.CopySubheaders({subheaders: this.Schemas[schema]}).subheaders
-      for(let field of this.DecycledSchemas[schema])
+    for(let modelName in this.Schemas[this.BaseDBString]) {
+      this.DecycledSchemas[modelName] = this.CopySubheaders({subheaders: this.Schemas[this.BaseDBString][modelName]}).subheaders
+      for(let field of this.DecycledSchemas[modelName])
         this.DecycleField(field)
     }
   }
@@ -129,8 +129,9 @@ There is also no maximum accesslevel.
   DecycleField(fieldObj, refs = []) {
     if(!fieldObj.subheaders) return
 
-    if(refs.includes(fieldObj.ref)) return fieldObj.subheaders = []
-    if(fieldObj.ref) refs.push(fieldObj.ref)
+    let refId = `${fieldObj.DBString}:${fieldObj.ref}`
+    if(refs.includes(refId)) return fieldObj.subheaders = []
+    if(fieldObj.ref) refs.push(refId)
 
     this.CopySubheaders(fieldObj)
 
@@ -273,14 +274,28 @@ field: {
       `)
     }
 
+    if(field.ref) {
+      let ref = field.ref
+      field.DBString = typeof ref == 'function' ? ref.db._connectionString : this.BaseDBString
+      field.ref = typeof ref == 'function' ? ref.modelName : ref
+      
+      if(field.DBString != this.BaseDBString) {
+        if(!this.Schemas[field.DBString]) this.Schemas[field.DBString] = {}
+        this.Schemas[field.DBString][field.ref] = this.GenerateSchema(ref)
+      }
+    }
+
     return field
   }
 
   plugInFieldRef(FieldObj) {
     if(!FieldObj.ref && !FieldObj.subheaders) return
 
-    if(FieldObj.ref && this.Schemas[FieldObj.ref]) return FieldObj.subheaders = this.Schemas[FieldObj.ref]
-    if(FieldObj.ref == 'CRUDFile') return FieldObj.subheaders = this.CRUDFileShema
+    if(FieldObj.ref){
+      if(FieldObj.ref == 'CRUDFile') return FieldObj.subheaders = this.CRUDFileShema
+
+      if(this.Schemas[FieldObj.DBString][FieldObj.ref]) return FieldObj.subheaders = this.Schemas[FieldObj.DBString][FieldObj.ref]
+    }
 
     for(const FObj of FieldObj.subheaders)
       this.plugInFieldRef(FObj)
@@ -289,11 +304,11 @@ field: {
   GenerateProto() {
     let proto = "package api;\nsyntax = \"proto3\";\n\n"
 
-    for( const ModelName in this.Schemas ) {
+    for( const ModelName in this.Schemas[this.BaseDBString] ) {
       proto += `message ${ModelName} {\n`
       let id = 1
 
-      for( let item of this.Schemas[ModelName] ) {
+      for( let item of this.Schemas[this.BaseDBString][ModelName] ) {
         let type = this.GetCorrectType( item )
         if(type == null)continue
 
@@ -338,7 +353,7 @@ field: {
   }
 
   GetHeaders( model, depth = 0 ) {
-    if(typeof model == 'string') model = this.Schemas[model]
+    if(typeof model == 'string') model = this.Schemas[this.BaseDBString][model]
     let headers = []
 
     for( let field of model ) {
@@ -367,7 +382,7 @@ field: {
     Router.post( '/schemakeys/:model', (req, res) => {
       if (!req.body.depth) req.body.depth = 2
       let keys = []
-      const schema = this.Schemas[req.params.model]
+      const schema = this.Schemas[this.BaseDBString][req.params.model]
 
       for (var obj of schema)
         this.GetSchemaKeys(keys, obj, "", 0, req.body.depth)
@@ -376,7 +391,7 @@ field: {
     })
 
     Router.get( '/count/:model', (req, res) => {
-      mongoose.model(req.params.model).countDocuments({}, (err, count) => {
+      this.MongooseConnection.model(req.params.model).countDocuments({}, (err, count) => {
         if(err) res.status(500).send(err)
         else res.send({count})
       })
@@ -407,14 +422,14 @@ field: {
       const MFunctions = this.Middlewares[req.params.model].R
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      mongoose.model(req.params.model)
+      this.MongooseConnection.model(req.params.model)
         .find( JSON.parse(req.query.filter), req.query.projection )
         .lean({ autopopulate: true, virtuals: true, getters: true })
         .sort( JSON.parse(req.query.sort) )
         .skip( Number(req.query.skip) || 0 )
         .limit( Number(req.query.limit) || null )
         .then( async results => {
-          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], result)
+          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], result)
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
 
           const ProtoType = this.API.lookupType(`api.${req.params.model}s`)
@@ -436,14 +451,14 @@ field: {
       const MFunctions = this.Middlewares[req.params.model].R
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      mongoose.model(req.params.model)
+      this.MongooseConnection.model(req.params.model)
         .find( JSON.parse(req.query.filter), req.query.projection )
         .lean({ autopopulate: true, virtuals: true, getters: true })
         .sort( JSON.parse(req.query.sort) )
         .skip( Number(req.query.skip) || 0 )
         .limit( Number(req.query.limit) || null )
         .then( async results => {
-          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], result)
+          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], result)
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
 
           res.send({ Headers, Data: results })
@@ -458,14 +473,14 @@ field: {
       const MFunctions = this.Middlewares[req.params.model].R
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      mongoose.model(req.params.model)
+      this.MongooseConnection.model(req.params.model)
         .find( JSON.parse(req.query.filter), req.query.projection )
         .lean({ autopopulate: true, virtuals: true, getters: true })
         .sort( JSON.parse(req.query.sort) )
         .skip( Number(req.query.skip) || 0 )
         .limit( Number(req.query.limit) || null )
         .then( async results => {
-          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], result)
+          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], result)
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
           res.send(results)
         })
@@ -482,10 +497,10 @@ field: {
       const MFunctions = this.Middlewares[req.params.model].R
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      mongoose.model(req.params.model).find()
+      this.MongooseConnection.model(req.params.model).find()
         .then( async allData => {
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-          const schemaData = this.Schemas[req.params.model]
+          const schemaData = this.Schemas[this.BaseDBString][req.params.model]
 
           if(req.body.pattern == "") return res.send(allData)
 
@@ -504,7 +519,7 @@ field: {
           const fuse = new Fuse(allData, options)
 
           let results = fuse.search(req.body.pattern)
-          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], result)
+          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], result)
           res.send(results)
         })
         .catch( error => res.status(500).send(error) )
@@ -514,10 +529,10 @@ field: {
       const MFunctions = this.Middlewares[req.params.model].R
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      mongoose.model(req.params.model).findOne( { _id: req.params.id }, req.query.projection, async (error, results) => {
+      this.MongooseConnection.model(req.params.model).findOne( { _id: req.params.id }, req.query.projection, async (error, results) => {
         if(error) return res.status(500).send(error)
         if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-        this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], results)
+        this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], results)
         res.send(results)
       }).lean({ autopopulate: true, virtuals: true, getters: true })
     })
@@ -566,9 +581,9 @@ field: {
 
     Router.post( "/:model", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].C
-      this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], req.body, 'minWriteAccess')
+      this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], req.body, 'minWriteAccess')
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      const Mod = mongoose.model(req.params.model)
+      const Mod = this.MongooseConnection.model(req.params.model)
       const results = new Mod(req.body)
       results.save( async (error, results) => {
         if(error) return res.status(500).send(error)
@@ -579,10 +594,10 @@ field: {
 
     Router.patch( "/:model", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].U
-      this.RemoveDeclinedFields(req.accesslevel, this.Schemas[req.params.model], req.body, 'minWriteAccess')
+      this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], req.body, 'minWriteAccess')
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      mongoose.model(req.params.model).updateOne({ _id: req.body._id }, req.body, async (error, results) => {
+      this.MongooseConnection.model(req.params.model).updateOne({ _id: req.body._id }, req.body, async (error, results) => {
         if(error) return res.status(500).send(error)
         if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
         res.send(results)
@@ -596,7 +611,7 @@ field: {
       if(declinedPaths.length) return res.status(500).send('EPERM')
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      mongoose.model(req.params.model).deleteOne({ _id: req.params.id }, async (error, results) => {
+      this.MongooseConnection.model(req.params.model).deleteOne({ _id: req.params.id }, async (error, results) => {
         if(error) return res.status(500).send(error)
         if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
         res.send(results)

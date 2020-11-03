@@ -44,13 +44,14 @@ const crudengine = require("crudengine");
 
 const crud = new crudengine({
   SchemaDIR: path.resolve(__dirname, './schemas'),
+  MongooseConnection: mongoose.connection, // [Optional] Only needed if using mongoose.createConnection() not mongoose.connect()
   ServiceDIR: path.resolve(__dirname, './services'), // [Optional] Services should be in this folder, if needed
   FileDIR: path.resolve(__dirname, './files'), // [Optional] This will become the /static or what we set as   ServeStaticPath
   ServeStaticPath: '/static', // [Optional] default /static
   ImageHeightSize: 1500, // [Optional] Image compression to given size, defaults to 800
   Thumbnail: false, // [Optional] Automatically save a thumbnail version for images, defaults to false
-  ThumbnailSize: 500 // [Optional] Thumbnail compression to given size, defaults to 250
-  MaxHeaderDepth: 2 // [Optional] Table headers will be traced till this depth recursively (default = 2, starts from 0)
+  ThumbnailSize: 500, // [Optional] Thumbnail compression to given size, defaults to 250
+  MaxHeaderDepth: 2, // [Optional] Table headers will be traced till this depth recursively (default = 2, starts from 0)
 }); // create the instance
 
 Router.use(someGenericAuthMiddlware) // no auth, no data
