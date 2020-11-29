@@ -159,22 +159,29 @@ There is also no maximum accesslevel.
   
   GeneratePathSchema(field, acc, prefix = '') {
     acc[`${prefix}${field.key}`] = field
-    if(!field.subheaders || field.ref) return
-
-    for(let f of field.subheaders)
-      this.GeneratePathSchema(f, acc, `${prefix}${field.key}.`)
+    
+    if(field.subheaders)
+      for(let f of field.subheaders)
+        this.GeneratePathSchema(f, acc, `${prefix}${field.key}.`)
   }
 
-  // TODO
-  GetSchemaKeys(keys, object, prefix, actualDepth, maxDepth){
-    if (actualDepth > maxDepth) return
+  GetSchemaKeys(schema, maxDepth = this.MaxHeaderDepth) {
+    const keys = []
 
-    if (!object.subheaders) {
-      keys.push(prefix + object.key)
-      return
-    }
-    for (let obj of object["subheaders"])
-      this.GetSchemaKeys(keys, obj, prefix + object.key + ".", actualDepth + 1, maxDepth)
+    for(let field of this.DecycledSchemas[schema])
+      this.GenerateSchemaKeys(field, keys, maxDepth)
+
+    return keys
+  }
+
+  GenerateSchemaKeys(field, keys, maxDepth, prefix = '', depth = 0) {
+    if(depth > maxDepth) return
+
+    if(!['Object', 'Date'].some(t => field.type == t) && !field.subheaders) keys.push(`${prefix}${field.key}`)
+    
+    if(field.subheaders)
+      for(let f of field.subheaders)
+        this.GenerateSchemaKeys(f, keys, maxDepth, `${prefix}${field.key}.`, depth+1)
   }
 
   GetPaths(schema, acc = {}, prefix = '') {
@@ -337,22 +344,29 @@ field: {
     }
   }
 
-  GetDeclinedPaths(accesslevel = 300, model, authField = 'minReadAccess') {
-    let declinedEntrs = Object.entries(this.PathSchemas[model]).filter(entr => entr[1][authField] > accesslevel)
-    return declinedEntrs.map(entr => entr[0])
+  GetDeclinedPaths(accesslevel = 300, model, authField = 'minReadAccess', excludeSubKeys = false) {
+    return Object.entries(this.PathSchemas[model])
+            .filter(([key, field]) => (!excludeSubKeys || !key.includes('.')) && field[authField] > accesslevel)
+            .map(entr => entr[0])
   }
 
-  RemoveDeclinedFields(accesslevel, fields, object, authField = 'minReadAccess') {
+  RemoveDeclinedFields(accesslevel, schema, array, authField = 'minReadAccess') {
+    for(const object of array) this.RemoveDeclinedFieldsFromObject(accesslevel, this.Schemas[this.BaseDBString][schema], object, authField)
+
+    return array
+  }
+
+  RemoveDeclinedFieldsFromObject(accesslevel, fields, object, authField = 'minReadAccess') {
     for(let field of fields) {
       if(field[authField] > accesslevel) delete object[field.key]
       else if(field.subheaders && object[field.key]) {
-        if(field.isArray) object[field.key].some( obj => this.RemoveDeclinedFields(accesslevel, field.subheaders, obj, authField) )
-        this.RemoveDeclinedFields(accesslevel, field.subheaders, object[field.key], authField)
+        if(field.isArray) object[field.key].some( obj => this.RemoveDeclinedFieldsFromObject(accesslevel, field.subheaders, obj, authField) )
+        this.RemoveDeclinedFieldsFromObject(accesslevel, field.subheaders, object[field.key], authField)
       }
     }
   }
 
-  GetHeaders( model, depth = 0 ) {
+  GetHeaders(model, depth = 0) {
     if(typeof model == 'string') model = this.Schemas[this.BaseDBString][model]
     let headers = []
 
@@ -380,14 +394,7 @@ field: {
     Router.get( '/schema/:model', (req, res) => res.send(this.DecycledSchemas[req.params.model]) )
 
     Router.post( '/schemakeys/:model', (req, res) => {
-      if (!req.body.depth) req.body.depth = 2
-      let keys = []
-      const schema = this.Schemas[this.BaseDBString][req.params.model]
-
-      for (var obj of schema)
-        this.GetSchemaKeys(keys, obj, "", 0, req.body.depth)
-
-      res.send(keys)
+      res.send(this.GetSchemaKeys(req.params.model, req.body.depth))
     })
 
     Router.get( '/count/:model', (req, res) => {
@@ -429,7 +436,7 @@ field: {
         .skip( Number(req.query.skip) || 0 )
         .limit( Number(req.query.limit) || null )
         .then( async results => {
-          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], result)
+          this.RemoveDeclinedFields(req.accesslevel, req.params.model, results)
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
 
           const ProtoType = this.API.lookupType(`api.${req.params.model}s`)
@@ -458,7 +465,7 @@ field: {
         .skip( Number(req.query.skip) || 0 )
         .limit( Number(req.query.limit) || null )
         .then( async results => {
-          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], result)
+          this.RemoveDeclinedFields(req.accesslevel, req.params.model, results)
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
 
           res.send({ Headers, Data: results })
@@ -480,49 +487,37 @@ field: {
         .skip( Number(req.query.skip) || 0 )
         .limit( Number(req.query.limit) || null )
         .then( async results => {
-          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], result)
+          this.RemoveDeclinedFields(req.accesslevel, req.params.model, results)
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
           res.send(results)
         })
         .catch( error => res.status(500).send(error) )
     })
 
-    // TODO
     Router.post( '/search/:model', async (req, res) => {
-      // props: pattern, depth, keys, threshold
-      if(!req.body.depth)     req.body.depth = 2
-      if(!req.body.threshold) req.body.threshold = 0.4
-
-
       const MFunctions = this.Middlewares[req.params.model].R
-
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
+      
       this.MongooseConnection.model(req.params.model).find()
-        .then( async allData => {
-          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-          const schemaData = this.Schemas[this.BaseDBString][req.params.model]
+      .lean({ autopopulate: true, virtuals: true, getters: true })
+      .then( async allData => {
+        this.RemoveDeclinedFields(req.accesslevel, req.params.model, allData)
+        if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
+        
+        if(!req.body.threshold) req.body.threshold = 0.4
+        if(!req.body.pattern) return res.send(allData)
+        if(!req.body.keys || req.body.keys.length == 0) req.body.keys = this.GetSchemaKeys(req.params.model, req.body.depth)
 
-          if(req.body.pattern == "") return res.send(allData)
-
-          if(!req.body.keys || req.body.keys.length == 0) {
-            req.body.keys = []
-            for (var obj of schemaData)
-              this.GetSchemaKeys(req.body.keys, obj, "", 0, req.body.depth)
-          }
-
-          const options = {
-            includeScore: false,
-            keys: req.body.keys,
-            threshold: req.body.threshold
-          }
-
-          const fuse = new Fuse(allData, options)
-
-          let results = fuse.search(req.body.pattern)
-          for(let result of results) this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], result)
-          res.send(results)
+        const fuse = new Fuse(allData, {
+          includeScore: false,
+          keys: req.body.keys,
+          threshold: req.body.threshold
         })
-        .catch( error => res.status(500).send(error) )
+
+        let results = fuse.search(req.body.pattern).map(r => r.item)
+        res.send(results)
+      })
+      .catch( error => res.status(500).send(error))
     })
 
     Router.get( "/:model/:id", async (req, res) => {
@@ -531,8 +526,8 @@ field: {
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       this.MongooseConnection.model(req.params.model).findOne( { _id: req.params.id }, req.query.projection, async (error, results) => {
         if(error) return res.status(500).send(error)
+        this.RemoveDeclinedFieldsFromObject(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], results)
         if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-        this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], results)
         res.send(results)
       }).lean({ autopopulate: true, virtuals: true, getters: true })
     })
@@ -581,7 +576,7 @@ field: {
 
     Router.post( "/:model", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].C
-      this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], req.body, 'minWriteAccess')
+      this.RemoveDeclinedFieldsFromObject(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], req.body, 'minWriteAccess')
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       const Mod = this.MongooseConnection.model(req.params.model)
       const results = new Mod(req.body)
@@ -594,7 +589,7 @@ field: {
 
     Router.patch( "/:model", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].U
-      this.RemoveDeclinedFields(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], req.body, 'minWriteAccess')
+      this.RemoveDeclinedFieldsFromObject(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], req.body, 'minWriteAccess')
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       this.MongooseConnection.model(req.params.model).updateOne({ _id: req.body._id }, req.body, async (error, results) => {
@@ -606,8 +601,7 @@ field: {
 
     Router.delete( "/:model/:id", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].D
-      const declinedPaths = this.GetDeclinedPaths(req.accesslevel, req.params.model, 'minWriteAccess')
-
+      const declinedPaths = this.GetDeclinedPaths(req.accesslevel, req.params.model, 'minWriteAccess', true)
       if(declinedPaths.length) return res.status(500).send('EPERM')
 
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
