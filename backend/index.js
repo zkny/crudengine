@@ -500,7 +500,7 @@ field: {
       const MFunctions = this.Middlewares[req.params.model].R
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       
-      this.MongooseConnection.model(req.params.model).find()
+      this.MongooseConnection.model(req.params.model).find(req.body.filter || {})
       .lean({ autopopulate: true, virtuals: true, getters: true })
       .then( async allData => {
         this.RemoveDeclinedFields(req.accesslevel, req.params.model, allData)
