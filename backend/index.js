@@ -398,7 +398,9 @@ field: {
     })
 
     Router.get( '/count/:model', (req, res) => {
-      this.MongooseConnection.model(req.params.model).countDocuments({}, (err, count) => {
+      if(!req.query.filter) req.query.filter = '{}'
+
+      this.MongooseConnection.model(req.params.model).countDocuments(JSON.parse(req.query.filter), (err, count) => {
         if(err) res.status(500).send(err)
         else res.send({count})
       })

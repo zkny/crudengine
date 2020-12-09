@@ -6,9 +6,11 @@ export default class __API {
     this.Prefix = Prefix
     this.ServeStaticPath = ServeStaticPath
   }
-  Count(ModelName) {
+  Count(ModelName, filter = {}) {
     return new Promise((resolve, reject) => {
-      this.$axios.$get(`${this.Prefix}/count/${ModelName}`)
+      this.$axios.$get(`${this.Prefix}/count/${ModelName}`, {
+        params: {filter}
+      })
       .then( r => resolve(r.count))
       .catch( Error => reject(Error))
     })
