@@ -7,7 +7,7 @@ export default class __API {
     this.ServeStaticPath = ServeStaticPath
     this.DefaultFilter = defaultFilter
   }
-  Count(ModelName, filter = DefaultFilter) {
+  Count(ModelName, filter = this.DefaultFilter) {
     return new Promise((resolve, reject) => {
       this.$axios.$get(`${this.Prefix}/count/${ModelName}`, {
         params: {filter}
