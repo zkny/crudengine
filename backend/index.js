@@ -1,7 +1,6 @@
 const express       = require('express')
 const fs            = require('fs')
 const path          = require('path')
-const { load }      = require('protobufjs')
 const multer        = require('multer')
 const sharp         = require('sharp')
 const CRUDFile      = require('./schemas/CRUDFile')
@@ -29,7 +28,6 @@ class CrudEngine {
     this.ServeStaticPath      = ServeStaticPath
     this.SchemaDIR            = SchemaDIR
     this.ServiceDIR           = ServiceDIR
-    this.API                  = false
     this.MaxHeaderDepth       = MaxHeaderDepth
 
     console.log('\x1b[36m%s\x1b[0m', `
@@ -91,11 +89,6 @@ There is also no maximum accesslevel.
     this.GenerateSchemas(rawSchemas)
     this.GenerateDecycledSchemas()
     this.GeneratePathSchemas()
-    this.GenerateProto()
-
-    load( path.resolve(__dirname, './api.proto'), (error, api) => {
-      if(!error) this.API = api
-    })
   }
 
   GenerateSchemas(RawSchemas) {
@@ -308,29 +301,6 @@ field: {
       this.plugInFieldRef(FObj)
   }
 
-  GenerateProto() {
-    let proto = "package api;\nsyntax = \"proto3\";\n\n"
-
-    for( const ModelName in this.Schemas[this.BaseDBString] ) {
-      proto += `message ${ModelName} {\n`
-      let id = 1
-
-      for( let item of this.Schemas[this.BaseDBString][ModelName] ) {
-        let type = this.GetCorrectType( item )
-        if(type == null)continue
-
-        if(item.isArray) proto += `\trepeated ${type} ${item.key} = ${id};\n`
-        else proto += `\t${type} ${item.key} = ${id};\n`
-        id++
-      }
-      proto += "}\n"
-
-      proto += `message ${ModelName}s {\n\trepeated ${ModelName} ${ModelName}s = 1;\n}\n\n`
-    }    
-
-    fs.writeFileSync( path.resolve(__dirname, './api.proto'), proto, {flag: "w+"} )
-  }
-
   GetCorrectType(item) {
     switch(item.type) {
       case 'Number':  return 'float'
@@ -387,8 +357,6 @@ field: {
   }
 
   GenerateRoutes() {
-    Router.use( '/protofile', express.static(path.resolve(__dirname, './api.proto')) )
-
     Router.get( '/schema', (req, res) => res.send(this.DecycledSchemas) )
 
     Router.get( '/schema/:model', (req, res) => res.send(this.DecycledSchemas[req.params.model]) )
@@ -423,32 +391,6 @@ field: {
         .then( data => res.send(data) )
         .catch( error => res.status(500).send(error) )
     )
-
-    Router.get( '/proto/:model', async (req, res) => {
-      if(!req.query.filter) req.query.filter = "{}"
-      if(!req.query.sort) req.query.sort = "{}"
-
-      const MFunctions = this.Middlewares[req.params.model].R
-
-      if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      this.MongooseConnection.model(req.params.model)
-        .find( JSON.parse(req.query.filter), req.query.projection )
-        .lean({ autopopulate: true, virtuals: true, getters: true })
-        .sort( JSON.parse(req.query.sort) )
-        .skip( Number(req.query.skip) || 0 )
-        .limit( Number(req.query.limit) || null )
-        .then( async results => {
-          this.RemoveDeclinedFields(req.accesslevel, req.params.model, results)
-          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-
-          const ProtoType = this.API.lookupType(`api.${req.params.model}s`)
-          const message = ProtoType.fromObject({ [`${req.params.model}s`]: results })
-          const buffer = ProtoType.encode(message).finish()
-
-          res.send(buffer)
-        })
-        .catch( error => res.status(500).send(error) )
-    })
 
     Router.get( '/tableheaders/:model', (req, res) => res.send(this.GetHeaders(req.params.model)) )
 
