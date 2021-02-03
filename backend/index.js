@@ -3,7 +3,7 @@ const fs            = require('fs')
 const path          = require('path')
 const multer        = require('multer')
 const sharp         = require('sharp')
-const CRUDFile      = require('./schemas/CRUDFile')
+const CRUDFileModel = require('./schemas/CRUDFile')
 const Fuse          = require('fuse.js')
 
 const Router = express.Router()
@@ -11,7 +11,12 @@ const Router = express.Router()
 class CrudEngine {
 
   constructor({MongooseConnection = require('mongoose'), SchemaDIR, ServiceDIR = null, FileDIR = null, ServeStaticPath = '/static', ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2 }) {
+    this.MongooseConnection   = MongooseConnection
     this.BaseDBString         = MongooseConnection.connections[0]._connectionString
+    this.FileDIR              = FileDIR
+    this.ServeStaticPath      = ServeStaticPath
+    this.SchemaDIR            = SchemaDIR
+    this.ServiceDIR           = ServiceDIR
     this.Schemas              = {[this.BaseDBString]: {}}
     this.PathSchemas          = {}
     this.DecycledSchemas      = {}
@@ -20,15 +25,11 @@ class CrudEngine {
     this.Middlewares          = {}
     this.Operations           = ['C', 'R', 'U', 'D']
     this.Timings              = ['after', 'before']
-    this.MongooseConnection   = MongooseConnection
+    this.MaxHeaderDepth       = MaxHeaderDepth
     this.ImageHeightSize      = ImageHeightSize
     this.Thumbnail            = Thumbnail
     this.ThumbnailSize        = ThumbnailSize
-    this.FileDIR              = FileDIR
-    this.ServeStaticPath      = ServeStaticPath
-    this.SchemaDIR            = SchemaDIR
-    this.ServiceDIR           = ServiceDIR
-    this.MaxHeaderDepth       = MaxHeaderDepth
+    this.upload               = null
 
     console.log('\x1b[36m%s\x1b[0m', `
 CRUDENGINE WARNING:
@@ -46,38 +47,37 @@ The default accesslevel is now 0 and the higher an accesslevel is on a field, th
 There is also no maximum accesslevel.
     `)
 
-    if (FileDIR) {
-      if(!fs.existsSync(FileDIR))
-        fs.mkdirSync(path.resolve(FileDIR), { recursive: true })
+    if(FileDIR) {
+      if(!fs.existsSync(FileDIR)) fs.mkdirSync(path.resolve(FileDIR), { recursive: true })
 
       this.upload = multer({ dest: FileDIR })
     }
 
-    if( ServiceDIR ) {
-      const ServiceFileArray = fs.readdirSync( ServiceDIR )
-      for( const ServiceFile of ServiceFileArray ) {
+    if(ServiceDIR) {
+      for( const ServiceFile of fs.readdirSync(ServiceDIR) ) {
         if( !ServiceFile.endsWith('.js') ) continue
         
-        const ServiceName = ServiceFile
-        .replace( '.js', '' )
-        .replace( '.ts', '' )
-        .replace( '.coffee', '' )
+        const ServiceName = ServiceFile.replace( '.js', '' )
         
         this.Services[ServiceName] = require(`${ServiceDIR}/${ServiceFile}`)
       }
     }
 
-    let rawSchemas = {}
-    let CRUDFileSchema = require('./schemas/CRUDFile')
-    for( const SchemaFile of fs.readdirSync(SchemaDIR) ) {
-      if( SchemaFile == '.DS_Store' || SchemaFile.includes('.map') ) continue
+    this.CRUDFileShema = this.GenerateSchema(CRUDFileModel)
+    this.GenerateSchemas()
+    this.GenerateDecycledSchemas()
+    this.GeneratePathSchemas()
+  }
 
-      let schemaObj = require(`${SchemaDIR}/${SchemaFile}`)
+  GenerateSchemas() {
+    for( const SchemaFile of fs.readdirSync(this.SchemaDIR) ) {
+      if( !SchemaFile.endsWith('.js') ) continue
 
-      let modelname = schemaObj.modelName || schemaObj.default.modelName
+      let model = require(`${this.SchemaDIR}/${SchemaFile}`)
+      let modelName = model.modelName || model.default.modelName
 
-      rawSchemas[modelname] = schemaObj
-      this.Middlewares[modelname] = {
+      this.Schemas[this.BaseDBString][modelName] = this.GenerateSchema(model)
+      this.Middlewares[modelName] = {
         C: {},
         R: {},
         U: {},
@@ -85,35 +85,27 @@ There is also no maximum accesslevel.
       }
     }
 
-    this.CRUDFileShema = this.GenerateSchema(CRUDFileSchema)
-    this.GenerateSchemas(rawSchemas)
-    this.GenerateDecycledSchemas()
-    this.GeneratePathSchemas()
-  }
-
-  GenerateSchemas(RawSchemas) {
-    for(let modelName in RawSchemas)
-    this.Schemas[this.BaseDBString][modelName] = this.GenerateSchema(RawSchemas[modelName])
-
     for(let DBString in this.Schemas)
       for(let modelName in this.Schemas[DBString])
-        for(const FieldObj of this.Schemas[DBString][modelName])
-          this.plugInFieldRef(FieldObj)
+        for(let fieldObj of this.Schemas[DBString][modelName])
+          this.plugInFieldRef(fieldObj)
   }
 
-  GenerateSchema(RawSchema) {
-    const Paths = this.GetPaths(RawSchema.schema)
+  GenerateSchema(model) {
+    const Paths = this.GetPaths(model.schema)
     let fields = []
 
     for(const FieldPath in Paths)
-      this.GenerateObjFieldChain(Paths[FieldPath], FieldPath, fields)
+      this.GenerateObjFieldTree(fields, FieldPath, Paths[FieldPath])
 
     return fields
   }
 
   GenerateDecycledSchemas() {
     for(let modelName in this.Schemas[this.BaseDBString]) {
-      this.DecycledSchemas[modelName] = this.CopySubheaders({subheaders: this.Schemas[this.BaseDBString][modelName]}).subheaders
+      const DecycledSchema = this.CopySubheaders({subheaders: this.Schemas[this.BaseDBString][modelName]})
+      this.DecycledSchemas[modelName] = DecycledSchema.subheaders
+      
       for(let field of this.DecycledSchemas[modelName])
         this.DecycleField(field)
     }
@@ -142,11 +134,11 @@ There is also no maximum accesslevel.
   }
 
   GeneratePathSchemas() {
-    for(let schema in this.DecycledSchemas) {
-      this.PathSchemas[schema] = {}
+    for(let modelName in this.DecycledSchemas) {
+      this.PathSchemas[modelName] = {}
   
-      for(let field of this.DecycledSchemas[schema])
-        this.GeneratePathSchema(field, this.PathSchemas[schema])
+      for(let field of this.DecycledSchemas[modelName])
+        this.GeneratePathSchema(field, this.PathSchemas[modelName])
     }
   }
   
@@ -158,13 +150,13 @@ There is also no maximum accesslevel.
         this.GeneratePathSchema(f, acc, `${prefix}${field.key}.`)
   }
 
-  GetSchemaKeys(schema, maxDepth = this.MaxHeaderDepth) {
-    const keys = []
+  GetSchemaKeys(modelName, maxDepth = this.MaxHeaderDepth) {
+    let keys = []
 
-    for(let field of this.DecycledSchemas[schema])
+    for(let field of this.DecycledSchemas[modelName])
       this.GenerateSchemaKeys(field, keys, maxDepth)
 
-    return keys
+    let keys
   }
 
   GenerateSchemaKeys(field, keys, maxDepth, prefix = '', depth = 0) {
@@ -191,24 +183,24 @@ There is also no maximum accesslevel.
     return acc
   }
 
-  GenerateObjFieldChain(FieldObj, FieldPath, cursor) {
-    let FieldKeys = FieldPath.split('.')
-    let lastName = FieldKeys[FieldKeys.length-1]
+  GenerateObjFieldTree(currentFieldLevel, fieldPath, mongooseFieldDescriptor) {
+    let fieldKeys = fieldPath.split('.')
+    let lastName = fieldKeys.pop()
 
     if( ['_id', '__v', '$'].some(s => lastName == s) ) return
 
-    for( let FieldKey of FieldKeys.slice(0, FieldKeys.length-1) ) {
+    for(const fieldKey of fieldKeys) {
       let ind = 0
-      while( ind < cursor.length && cursor[ind].key != FieldKey ) ind++
+      while( ind < currentFieldLevel.length && currentFieldLevel[ind].key != fieldKey ) ind++
 
-      if(ind == cursor.length)
-        cursor.push({
-          key: FieldKey,
+      if(ind == currentFieldLevel.length)
+        currentFieldLevel.push({
+          key: fieldKey,
           isArray: false,
           type: 'Object',
           required: false,
           ref:  null,
-          name: FieldKey,
+          name: fieldKey,
           description: null,
           default: null,
           minReadAccess: 0,
@@ -216,30 +208,30 @@ There is also no maximum accesslevel.
           subheaders: []
         })
 
-      cursor = cursor[ind].subheaders
+      currentFieldLevel = currentFieldLevel[ind].subheaders
     }
 
-    cursor.push( this.GenerateSchemaField(FieldObj, lastName) )
+    currentFieldLevel.push( this.GenerateSchemaField(lastName, mongooseFieldDescriptor) )
   }
 
-  GenerateSchemaField(FieldObj, FieldKey ) {
+  GenerateSchemaField(fieldKey, mongooseFieldDescriptor) {
     let field = {
-      key: FieldKey,
-      isArray: FieldObj.instance == 'Array',
-      type: FieldObj.instance,
-      required: FieldObj.options.required || false,
-      ref: FieldObj.options.ref || null,
-      name: FieldObj.options.name || null,
-      description: FieldObj.options.description || null,
-      default: FieldObj.options.default || null,
-      minReadAccess: FieldObj.options.minReadAccess || 0,
-      minWriteAccess: FieldObj.options.minWriteAccess || 0,
+      key: fieldKey,
+      isArray: mongooseFieldDescriptor.instance == 'Array',
+      type: mongooseFieldDescriptor.instance,
+      required: mongooseFieldDescriptor.options.required || false,
+      ref: mongooseFieldDescriptor.options.ref || null,
+      name: mongooseFieldDescriptor.options.name || null,
+      description: mongooseFieldDescriptor.options.description || null,
+      default: mongooseFieldDescriptor.options.default || null,
+      minReadAccess: mongooseFieldDescriptor.options.minReadAccess || 0,
+      minWriteAccess: mongooseFieldDescriptor.options.minWriteAccess || 0,
     }
-    if(FieldObj.options.primary) field.primary = true
-    if(FieldObj.options.hidden) field.hidden = true
+    if(mongooseFieldDescriptor.options.primary) field.primary = true
+    if(mongooseFieldDescriptor.options.hidden) field.hidden = true
 
     if(field.isArray) {
-      const Emb = FieldObj.$embeddedSchemaType
+      const Emb = mongooseFieldDescriptor.$embeddedSchemaType
 
       if(!Emb.instance) field.subheaders = []
       if(Emb.options.primary) field.primary = true
@@ -255,92 +247,74 @@ There is also no maximum accesslevel.
 
     if(field.type == 'ObjectID') field.type = 'Object'
     else if(field.type == 'Embedded') {
-      field.type = 'Object',
+      field.type = 'Object'
       field.subheaders = []
     }
     else if(field.type == 'Mixed') {
       field.type = 'Object'
-      console.log('\x1b[36m%s\x1b[0m', `
-CRUDENGINE WARNING:
-Fields with mixed type can not be traced, due to limitation!
-To get subheaders use the following syntax:
-field: {
-  type: new Schema({subfield: String})
-}
-Instead of:
-field: {
-  type: {subfield: String}
-}
-      `)
+      this.WarnMixedType(fieldKey, field.name)  
     }
 
     if(field.ref) {
-      let ref = field.ref
-      field.DBString = typeof ref == 'function' ? ref.db._connectionString : this.BaseDBString
-      field.ref = typeof ref == 'function' ? ref.modelName : ref
+      let givenRef = field.ref
+      let isModel = typeof givenRef == 'function'
+
+      field.DBString = isModel ? givenRef.db._connectionString : this.BaseDBString
+      field.ref = isModel ? givenRef.modelName : givenRef
       
       if(field.DBString != this.BaseDBString) {
         if(!this.Schemas[field.DBString]) this.Schemas[field.DBString] = {}
-        this.Schemas[field.DBString][field.ref] = this.GenerateSchema(ref)
+        this.Schemas[field.DBString][field.ref] = this.GenerateSchema(givenRef)
       }
     }
 
     return field
   }
 
-  plugInFieldRef(FieldObj) {
-    if(!FieldObj.ref && !FieldObj.subheaders) return
+  plugInFieldRef(fieldObj) {
+    if(!fieldObj.ref && !fieldObj.subheaders) return
 
-    if(FieldObj.ref){
-      if(FieldObj.ref == 'CRUDFile') return FieldObj.subheaders = this.CRUDFileShema
-
-      if(this.Schemas[FieldObj.DBString][FieldObj.ref]) return FieldObj.subheaders = this.Schemas[FieldObj.DBString][FieldObj.ref]
+    if(fieldObj.ref) {
+      if(fieldObj.ref == 'CRUDFile') return fieldObj.subheaders = this.CRUDFileShema
+      if(this.Schemas[fieldObj.DBString][fieldObj.ref]) return fieldObj.subheaders = this.Schemas[fieldObj.DBString][fieldObj.ref]
     }
 
-    for(const FObj of FieldObj.subheaders)
-      this.plugInFieldRef(FObj)
+    for(const fObj of fieldObj.subheaders)
+      this.plugInFieldRef(fObj)
   }
 
-  GetCorrectType(item) {
-    switch(item.type) {
-      case 'Number':  return 'float'
-      case 'String':  return 'string'
-      case 'Date':    return 'string'
-      case 'Boolean': return 'bool'
-      case 'ObjectID':
-        if(item.ref) return item.ref
-        else return 'string'
-      default: return null
-    }
+  GetDeclinedPaths(modelName, accesslevel = 0, authField = 'minReadAccess', excludeSubKeys = false) {
+      let fieldEntries = Object.entries(this.PathSchemas[modelName])
+
+      if(excludeSubKeys) fieldEntries = fieldEntries.filter( ([key, field]) => !key.includes('.') )
+      fieldEntries = fieldEntries.filter( ([key, field]) => field[authField] > accesslevel )
+      
+      return fieldEntries.map(entr => entr[0])
   }
 
-  GetDeclinedPaths(accesslevel = 300, model, authField = 'minReadAccess', excludeSubKeys = false) {
-    return Object.entries(this.PathSchemas[model])
-            .filter(([key, field]) => (!excludeSubKeys || !key.includes('.')) && field[authField] > accesslevel)
-            .map(entr => entr[0])
+  RemoveDeclinedFields(modelName, documents, accesslevel = 0, authField = 'minReadAccess') {
+    for(const document of documents)
+      this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][modelName], document, accesslevel, authField)
+
+    return documents
   }
 
-  RemoveDeclinedFields(accesslevel, schema, array, authField = 'minReadAccess') {
-    for(const object of array) this.RemoveDeclinedFieldsFromObject(accesslevel, this.Schemas[this.BaseDBString][schema], object, authField)
-
-    return array
-  }
-
-  RemoveDeclinedFieldsFromObject(accesslevel, fields, object, authField = 'minReadAccess') {
+  RemoveDeclinedFieldsFromObject(fields, object, accesslevel = 0, authField = 'minReadAccess') {
     for(let field of fields) {
       if(field[authField] > accesslevel) delete object[field.key]
+
       else if(field.subheaders && object[field.key]) {
-        if(field.isArray) object[field.key].some( obj => this.RemoveDeclinedFieldsFromObject(accesslevel, field.subheaders, obj, authField) )
-        this.RemoveDeclinedFieldsFromObject(accesslevel, field.subheaders, object[field.key], authField)
+        if(field.isArray) object[field.key].forEach( obj => this.RemoveDeclinedFieldsFromObject(field.subheaders, obj, accesslevel, authField) )
+        else this.RemoveDeclinedFieldsFromObject(field.subheaders, object[field.key], accesslevel, authField)
       }
     }
   }
 
-  GetHeaders(model, depth = 0) {
-    if(typeof model == 'string') model = this.Schemas[this.BaseDBString][model]
+  GetHeaders(schema, depth = 0) {
+    if(typeof schema == 'string') schema = this.Schemas[this.BaseDBString][schema]
     let headers = []
 
-    for( let field of model ) {
+    for(let field of schema) {
       if(field.hidden) continue
       let hField = {}
 
@@ -377,7 +351,6 @@ field: {
     if(this.FileDIR)
       Router.use( `${this.ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
 
-    // Generate the crud routes for each model
     Router.get( '/getter/:service/:fun', (req, res) =>
       this.Services[req.params.service][req.params.fun]
         .call( null, { params: req.query } )
@@ -409,7 +382,7 @@ field: {
         .skip( Number(req.query.skip) || 0 )
         .limit( Number(req.query.limit) || null )
         .then( async results => {
-          this.RemoveDeclinedFields(req.accesslevel, req.params.model, results)
+          this.RemoveDeclinedFields(req.params.model, results, req.accesslevel)
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
 
           res.send({ Headers, Data: results })
@@ -431,7 +404,7 @@ field: {
         .skip( Number(req.query.skip) || 0 )
         .limit( Number(req.query.limit) || null )
         .then( async results => {
-          this.RemoveDeclinedFields(req.accesslevel, req.params.model, results)
+          this.RemoveDeclinedFields(req.params.model, results, req.accesslevel)
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
           res.send(results)
         })
@@ -442,38 +415,43 @@ field: {
       const MFunctions = this.Middlewares[req.params.model].R
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       
-      this.MongooseConnection.model(req.params.model).find(req.body.filter || {})
-      .lean({ autopopulate: true, virtuals: true, getters: true })
-      .then( async allData => {
-        this.RemoveDeclinedFields(req.accesslevel, req.params.model, allData)
-        if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-        
-        if(!req.body.threshold) req.body.threshold = 0.4
-        if(!req.body.pattern) return res.send(allData)
-        if(!req.body.keys || req.body.keys.length == 0) req.body.keys = this.GetSchemaKeys(req.params.model, req.body.depth)
+      this.MongooseConnection.model(req.params.model)
+        .find(req.body.filter || {})
+        .lean({ autopopulate: true, virtuals: true, getters: true })
+        .then( async allData => {
+          this.RemoveDeclinedFields(req.params.model, allData, req.accesslevel)
+          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
+          
+          if(!req.body.threshold) req.body.threshold = 0.4
+          if(!req.body.pattern) return res.send(allData)
+          if(!req.body.keys || req.body.keys.length == 0) req.body.keys = this.GetSchemaKeys(req.params.model, req.body.depth)
 
-        const fuse = new Fuse(allData, {
-          includeScore: false,
-          keys: req.body.keys,
-          threshold: req.body.threshold
+          const fuse = new Fuse(allData, {
+            includeScore: false,
+            keys: req.body.keys,
+            threshold: req.body.threshold
+          })
+
+          let results = fuse.search(req.body.pattern).map(r => r.item)
+          res.send(results)
         })
-
-        let results = fuse.search(req.body.pattern).map(r => r.item)
-        res.send(results)
-      })
-      .catch( error => res.status(500).send(error))
+        .catch( error => res.status(500).send(error))
     })
 
     Router.get( "/:model/:id", async (req, res) => {
       const MFunctions = this.Middlewares[req.params.model].R
-
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      this.MongooseConnection.model(req.params.model).findOne( { _id: req.params.id }, req.query.projection, async (error, results) => {
-        if(error) return res.status(500).send(error)
-        this.RemoveDeclinedFieldsFromObject(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], results)
-        if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-        res.send(results)
-      }).lean({ autopopulate: true, virtuals: true, getters: true })
+
+      this.MongooseConnection.model(req.params.model)
+        .findOne({_id: req.params.id}, req.query.projection)
+        .lean({ autopopulate: true, virtuals: true, getters: true })
+        .then( async results => {
+          this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], results, req.accesslevel)
+          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
+
+          res.send(results)
+        })
+        .catch( error => res.status(500).send(error))
     })
 
     if(this.FileDIR) {
@@ -493,7 +471,7 @@ field: {
           size: file.size,
           extension: extension,
         }
-        CRUDFile.create(fileData, (err, file) => {
+        CRUDFileModel.create(fileData, (err, file) => {
           if(err) res.status(500).send(err)
           else res.send(file)
         })
@@ -501,7 +479,7 @@ field: {
 
       // TODO
       Router.delete( "/filedelete/:id", (req, res) => {
-        CRUDFile.findOne({_id: req.params.id})
+        CRUDFileModel.findOne({_id: req.params.id})
           .then( file => {
             let realPath = path.resolve( this.FileDIR, file.path )
             if(realPath.indexOf(this.FileDIR) != 0) return res.status(500).send('Invalid file path!')
@@ -510,7 +488,7 @@ field: {
             let thumbnailPath = realPath.replace('.', '_thumbnail.')
             if(fs.existsSync(thumbnailPath)) fs.unlinkSync(thumbnailPath)
 
-            CRUDFile.deleteOne({_id: file._id})
+            CRUDFileModel.deleteOne({_id: file._id})
               .then( () => res.send() )
               .catch( err => res.status(500).send(err) )
           })
@@ -519,41 +497,54 @@ field: {
     }
 
     Router.post( "/:model", async (req, res) => {
+      this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], req.body, req.accesslevel, 'minWriteAccess')
+
       const MFunctions = this.Middlewares[req.params.model].C
-      this.RemoveDeclinedFieldsFromObject(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], req.body, 'minWriteAccess')
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      const Mod = this.MongooseConnection.model(req.params.model)
-      const results = new Mod(req.body)
-      results.save( async (error, results) => {
-        if(error) return res.status(500).send(error)
-        if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-        res.send(results)
-      })
+
+      const Model = this.MongooseConnection.model(req.params.model)
+      const ModelInstance = new Model(req.body)
+      ModelInstance.save()
+        .then( async results => {
+          this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], results, req.accesslevel)
+          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
+
+          res.send(results)
+        })
+        .catch( err => res.status(500).send(err) )
     })
 
     Router.patch( "/:model", async (req, res) => {
+      this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], req.body, req.accesslevel, 'minWriteAccess')
+      
       const MFunctions = this.Middlewares[req.params.model].U
-      this.RemoveDeclinedFieldsFromObject(req.accesslevel, this.Schemas[this.BaseDBString][req.params.model], req.body, 'minWriteAccess')
-
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      this.MongooseConnection.model(req.params.model).updateOne({ _id: req.body._id }, req.body, async (error, results) => {
-        if(error) return res.status(500).send(error)
-        if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-        res.send(results)
-      })
+
+      this.MongooseConnection.model(req.params.model)
+        .updateOne({ _id: req.body._id }, req.body)
+        .then(async results => {
+          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
+
+          res.send(results)
+        })
+        .catch( err => res.status(500).send(err) )
     })
 
     Router.delete( "/:model/:id", async (req, res) => {
-      const MFunctions = this.Middlewares[req.params.model].D
-      const declinedPaths = this.GetDeclinedPaths(req.accesslevel, req.params.model, 'minWriteAccess', true)
+      const declinedPaths = this.GetDeclinedPaths(req.params.model, req.accesslevel, 'minWriteAccess', true)
       if(declinedPaths.length) return res.status(500).send('EPERM')
-
+      
+      const MFunctions = this.Middlewares[req.params.model].D
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      this.MongooseConnection.model(req.params.model).deleteOne({ _id: req.params.id }, async (error, results) => {
-        if(error) return res.status(500).send(error)
-        if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-        res.send(results)
-      })
+
+      this.MongooseConnection.model(req.params.model)
+        .deleteOne({ _id: req.params.id })
+        then(async results => {
+          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
+          
+          res.send(results)
+        })
+        .catch( err => res.status(500).send(err) )
     })
 
     return Router
@@ -594,7 +585,7 @@ field: {
 
           fs.unlinkSync(file.path)
 
-          CRUDFile.create(fileData, (err, file) => {
+          CRUDFileModel.create(fileData, (err, file) => {
             if(err) res.status(500).send(err)
             else res.send(file)
           })
@@ -603,22 +594,45 @@ field: {
 
       fs.unlinkSync(file.path)
 
-      CRUDFile.create(fileData, (err, file) => {
+      CRUDFileModel.create(fileData, (err, file) => {
         if(err) res.status(500).send(err)
         else res.send(file)
       })
     })
   }
 
-  addMiddleware( modelname, operation, timing, middlewareFunction ) {
+  addMiddleware( modelName, operation, timing, middlewareFunction ) {
     return new Promise( (resolve, reject) => {
-      if( !this.Middlewares[modelname] ) return reject( new Error(`Middleware: No model found with name: ${modelname}`) )
+      if( !this.Middlewares[modelName] ) return reject( new Error(`Middleware: No model found with name: ${modelName}`) )
       if( !this.Operations.includes(operation) ) return reject( new Error(`Middleware: Operation should be one of: ${this.Operations}`) )
       if( !this.Timings.includes(timing) ) return reject( new Error(`Middleware: Timing should be one of: ${this.Timings}`) )
 
-      this.Middlewares[modelname][operation][timing] = `(${middlewareFunction.toString()})()`
+      this.Middlewares[modelName][operation][timing] = `(${middlewareFunction.toString()})()`
       return resolve('Middleware added')
     })
+  }
+
+  WarnMixedType(key, name) {
+    console.log('\x1b[36m%s\x1b[0m', `
+CRUDENGINE WARNING:
+'Mixed' type field '${key}'!
+To get subheaders for this field use the following syntax:
+${key}: {
+  name: ${name},
+  type: new mongoose.Schema({
+    key: value
+  }),
+  ...
+}
+
+Instead of:
+${key}: {
+  name: ${name},
+  type: {
+    key: value
+  },
+  ...
+}\n`)
   }
 }
 
