@@ -10,7 +10,19 @@ const Router = express.Router()
 
 class CrudEngine {
 
-  constructor({MongooseConnection = require('mongoose'), SchemaDIR, ServiceDIR = null, FileDIR = null, ServeStaticPath = '/static', ImageHeightSize = 800, Thumbnail = false, ThumbnailSize = 250, MaxHeaderDepth = 2 }) {
+  constructor({
+      MongooseConnection = require('mongoose'),
+      SchemaDIR,
+      ServiceDIR = null,
+      FileDIR = null,
+      ServeStaticPath = '/static',
+      ImageHeightSize = 800,
+      Thumbnail = false,
+      ThumbnailSize = 250,
+      MaxHeaderDepth = 2,
+      ShowErrors = true,
+      ShowWarnings = true
+    }) {
     this.MongooseConnection   = MongooseConnection
     this.BaseDBString         = MongooseConnection.connections[0]._connectionString
     this.FileDIR              = FileDIR
@@ -29,23 +41,11 @@ class CrudEngine {
     this.ImageHeightSize      = ImageHeightSize
     this.Thumbnail            = Thumbnail
     this.ThumbnailSize        = ThumbnailSize
+    this.ShowErrors           = ShowErrors
+    this.ShowWarnings         = ShowWarnings
     this.upload               = null
 
-    console.log('\x1b[36m%s\x1b[0m', `
-CRUDENGINE WARNING:
-BREAKING CHANGES since version 1.4.2:
-
-The following config fields were renamed:
-  • alias -> name,
-  • minReadAuth -> minReadAccess
-  • minWriteAuth -> minWriteAccess
-  
-  Please update them, to have all the functionalities
-
-The way accesslevel is handled has also changed.
-The default accesslevel is now 0 and the higher an accesslevel is on a field, the higher accesslevel is needed to modify it.
-There is also no maximum accesslevel.
-    `)
+    this.LogBreakingChanges()
 
     if(FileDIR) {
       if(!fs.existsSync(FileDIR)) fs.mkdirSync(path.resolve(FileDIR), { recursive: true })
@@ -252,7 +252,7 @@ There is also no maximum accesslevel.
     }
     else if(field.type == 'Mixed') {
       field.type = 'Object'
-      this.WarnMixedType(fieldKey, field.name)  
+      this.LogMixedType(fieldKey, field.name)  
     }
 
     if(field.ref) {
@@ -333,13 +333,30 @@ There is also no maximum accesslevel.
   GenerateRoutes() {
     Router.get( '/schema', (req, res) => res.send(this.DecycledSchemas) )
 
-    Router.get( '/schema/:model', (req, res) => res.send(this.DecycledSchemas[req.params.model]) )
+    Router.get( '/schema/:model', (req, res) => {
+      if(!this.Schemas[req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
+      res.send(this.DecycledSchemas[req.params.model])
+    })
 
     Router.post( '/schemakeys/:model', (req, res) => {
+      if(!this.Schemas[req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
       res.send(this.GetSchemaKeys(req.params.model, req.body.depth))
     })
 
     Router.get( '/count/:model', (req, res) => {
+      if(!this.Schemas[req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
       if(!req.query.filter) req.query.filter = '{}'
 
       this.MongooseConnection.model(req.params.model).countDocuments(JSON.parse(req.query.filter), (err, count) => {
@@ -351,46 +368,53 @@ There is also no maximum accesslevel.
     if(this.FileDIR)
       Router.use( `${this.ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
 
-    Router.get( '/getter/:service/:fun', (req, res) =>
+    Router.get( '/getter/:service/:fun', (req, res) => {
+      if(!this.Services[req.params.service]) {
+        this.LogMissingService(req.params.service)
+        return res.status(500).send('MISSING SERVICE')
+      }
+      if(!this.Services[req.params.service][req.params.fun]) {
+        this.LogMissingServiceFunction(req.params.service, req.params.fun)
+        return res.status(500).send('MISSING SERVICE FUNCTION')
+      }
+
       this.Services[req.params.service][req.params.fun]
         .call( null, { params: req.query } )
         .then( data => res.send(data) )
         .catch( error => res.status(500).send(error) )
-    )
+    })
 
-    Router.post( '/runner/:service/:fun', (req, res) =>
+    Router.post( '/runner/:service/:fun', (req, res) => {
+      if(!this.Services[req.params.service]) {
+        this.LogMissingService(req.params.service)
+        return res.status(500).send('MISSING SERVICE')
+      }
+      if(!this.Services[req.params.service][req.params.fun]) {
+        this.LogMissingServiceFunction(req.params.service, req.params.fun)
+        return res.status(500).send('MISSING SERVICE FUNCTION')
+      }
+
       this.Services[req.params.service][req.params.fun]
         .call( null, { params: req.body } )
         .then( data => res.send(data) )
         .catch( error => res.status(500).send(error) )
-    )
+    })
 
-    Router.get( '/tableheaders/:model', (req, res) => res.send(this.GetHeaders(req.params.model)) )
+    Router.get( '/tableheaders/:model', (req, res) => {
+      if(!this.Schemas[req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
 
-    Router.get( '/table/:model', async (req, res) => {
-      if(!req.query.filter) req.query.filter = "{}"
-      if(!req.query.sort) req.query.sort = "{}"
-
-      const Headers = this.GetHeaders(req.params.model)
-      const MFunctions = this.Middlewares[req.params.model].R
-
-      if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      this.MongooseConnection.model(req.params.model)
-        .find( JSON.parse(req.query.filter), req.query.projection )
-        .lean({ autopopulate: true, virtuals: true, getters: true })
-        .sort( JSON.parse(req.query.sort) )
-        .skip( Number(req.query.skip) || 0 )
-        .limit( Number(req.query.limit) || null )
-        .then( async results => {
-          this.RemoveDeclinedFields(req.params.model, results, req.accesslevel)
-          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-
-          res.send({ Headers, Data: results })
-        })
-        .catch( error => res.status(500).send(error) )
+      res.send(this.GetHeaders(req.params.model))
     })
 
     Router.get( '/:model/find', async (req, res) => {
+      if(!this.Schemas[req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
       if(!req.query.filter) req.query.filter = "{}"
       if(!req.query.sort) req.query.sort = "{}"
 
@@ -406,12 +430,18 @@ There is also no maximum accesslevel.
         .then( async results => {
           this.RemoveDeclinedFields(req.params.model, results, req.accesslevel)
           if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
+
           res.send(results)
         })
         .catch( error => res.status(500).send(error) )
     })
 
     Router.post( '/search/:model', async (req, res) => {
+      if(!this.Schemas[req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
       const MFunctions = this.Middlewares[req.params.model].R
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
       
@@ -439,6 +469,11 @@ There is also no maximum accesslevel.
     })
 
     Router.get( "/:model/:id", async (req, res) => {
+      if(!this.Schemas[req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
       const MFunctions = this.Middlewares[req.params.model].R
       if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
 
@@ -497,6 +532,11 @@ There is also no maximum accesslevel.
     }
 
     Router.post( "/:model", async (req, res) => {
+      if(!this.Schemas[req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
       this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], req.body, req.accesslevel, 'minWriteAccess')
 
       const MFunctions = this.Middlewares[req.params.model].C
@@ -515,6 +555,11 @@ There is also no maximum accesslevel.
     })
 
     Router.patch( "/:model", async (req, res) => {
+      if(!this.Schemas[req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
       this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], req.body, req.accesslevel, 'minWriteAccess')
       
       const MFunctions = this.Middlewares[req.params.model].U
@@ -531,6 +576,11 @@ There is also no maximum accesslevel.
     })
 
     Router.delete( "/:model/:id", async (req, res) => {
+      if(!this.Schemas[req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
       const declinedPaths = this.GetDeclinedPaths(req.params.model, req.accesslevel, 'minWriteAccess', true)
       if(declinedPaths.length) return res.status(500).send('EPERM')
       
@@ -612,9 +662,28 @@ There is also no maximum accesslevel.
     })
   }
 
-  WarnMixedType(key, name) {
-    console.log('\x1b[36m%s\x1b[0m', `
-CRUDENGINE WARNING:
+  LogBreakingChanges() {
+    console.log('\x1b[38;5;221m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE WARNING:')
+    console.log('\x1b[38;5;221m%s\x1b[0m', `
+BREAKING CHANGES since version 1.4.2:
+
+The following config fields were renamed:
+  • alias -> name,
+  • minReadAuth -> minReadAccess
+  • minWriteAuth -> minWriteAccess
+  
+  Please update them, to have all the functionalities.
+
+The way accesslevel is handled has also changed.
+The default accesslevel is now 0 and the higher an accesslevel is on a field, the higher accesslevel is needed to modify it.
+There is also no maximum accesslevel.\n`)
+  }
+
+  LogMixedType(key, name) {
+    if(!this.ShowWarnings) return
+
+    console.log('\x1b[38;5;81m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE WARNING:')
+    console.log('\x1b[38;5;81m%s\x1b[0m', `
 'Mixed' type field '${key}'!
 To get subheaders for this field use the following syntax:
 ${key}: {
@@ -633,6 +702,50 @@ ${key}: {
   },
   ...
 }\n`)
+  }
+
+  LogMissingModel(modelName) {
+    if(!this.ShowErrors) return
+    
+    console.log('\x1b[38;5;9m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE ERROR:')
+    console.log('\x1b[38;5;9m%s\x1b[0m', `
+MISSING MODEL: '${modelName}'
+
+There is no model registered with the name '${modelName}'.
+This is most likely just a typo.
+
+If the name is correct check, if:
+  • the file containg the model is in the folder which was given to crudengine
+  • the file is exporting the model, so crudengine can import it\n`)
+  }
+
+  LogMissingService(serviceName) {
+    if(!this.ShowErrors) return
+    
+    console.log('\x1b[38;5;9m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE ERROR:')
+    console.log('\x1b[38;5;9m%s\x1b[0m', `
+MISSING SERVICE: '${serviceName}'
+
+There is no service registered with the name '${serviceName}'.
+This is most likely just a typo.
+
+If the name is correct check, if:
+  • the file containg the service is in the folder which was given to crudengine
+  • the file is exporting the service, so crudengine can import it\n`)
+  }
+
+  LogMissingServiceFunction(serviceName, functionName) {
+    if(!this.ShowErrors) return
+    
+    console.log('\x1b[38;5;9m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE ERROR:')
+    console.log('\x1b[38;5;9m%s\x1b[0m', `
+MISSING SERVICE FUNCTION: '${functionName}'
+
+There is no function in the service '${serviceName}' with the name '${functionName}'.
+This is most likely just a typo.
+
+If the name is correct check, if:
+  • the '${serviceName}' service is the one containing the function\n`)
   }
 }
 
