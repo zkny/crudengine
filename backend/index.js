@@ -20,8 +20,9 @@ class CrudEngine {
       Thumbnail = false,
       ThumbnailSize = 250,
       MaxHeaderDepth = 2,
+      ShowLogs = true,
+      ShowWarnings = true,
       ShowErrors = true,
-      ShowWarnings = true
     }) {
     this.MongooseConnection   = MongooseConnection
     this.BaseDBString         = MongooseConnection.connections[0]._connectionString
@@ -41,8 +42,9 @@ class CrudEngine {
     this.ImageHeightSize      = ImageHeightSize
     this.Thumbnail            = Thumbnail
     this.ThumbnailSize        = ThumbnailSize
-    this.ShowErrors           = ShowErrors
+    this.ShowLogs             = ShowLogs
     this.ShowWarnings         = ShowWarnings
+    this.ShowErrors           = ShowErrors
     this.upload               = null
 
     this.LogBreakingChanges()
@@ -78,10 +80,10 @@ class CrudEngine {
 
       this.Schemas[this.BaseDBString][modelName] = this.GenerateSchema(model)
       this.Middlewares[modelName] = {
-        C: {},
-        R: {},
-        U: {},
-        D: {},
+        C: { before: () => Promise.resolve(), after: () => Promise.resolve()},
+        R: { before: () => Promise.resolve(), after: () => Promise.resolve()},
+        U: { before: () => Promise.resolve(), after: () => Promise.resolve()},
+        D: { before: () => Promise.resolve(), after: () => Promise.resolve()},
       }
     }
 
@@ -330,276 +332,6 @@ class CrudEngine {
     return headers
   }
 
-  GenerateRoutes() {
-    Router.get( '/schema', (req, res) => res.send(this.DecycledSchemas) )
-
-    Router.get( '/schema/:model', (req, res) => {
-      if(!this.Schemas[req.params.model]) {
-        this.LogMissingModel(req.params.model)
-        return res.status(500).send('MISSING MODEL')
-      }
-
-      res.send(this.DecycledSchemas[req.params.model])
-    })
-
-    Router.post( '/schemakeys/:model', (req, res) => {
-      if(!this.Schemas[req.params.model]) {
-        this.LogMissingModel(req.params.model)
-        return res.status(500).send('MISSING MODEL')
-      }
-
-      res.send(this.GetSchemaKeys(req.params.model, req.body.depth))
-    })
-
-    Router.get( '/count/:model', (req, res) => {
-      if(!this.Schemas[req.params.model]) {
-        this.LogMissingModel(req.params.model)
-        return res.status(500).send('MISSING MODEL')
-      }
-
-      if(!req.query.filter) req.query.filter = '{}'
-
-      this.MongooseConnection.model(req.params.model).countDocuments(JSON.parse(req.query.filter), (err, count) => {
-        if(err) res.status(500).send(err)
-        else res.send({count})
-      })
-    })
-
-    if(this.FileDIR)
-      Router.use( `${this.ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
-
-    Router.get( '/getter/:service/:fun', (req, res) => {
-      if(!this.Services[req.params.service]) {
-        this.LogMissingService(req.params.service)
-        return res.status(500).send('MISSING SERVICE')
-      }
-      if(!this.Services[req.params.service][req.params.fun]) {
-        this.LogMissingServiceFunction(req.params.service, req.params.fun)
-        return res.status(500).send('MISSING SERVICE FUNCTION')
-      }
-
-      this.Services[req.params.service][req.params.fun]
-        .call( null, { params: req.query } )
-        .then( data => res.send(data) )
-        .catch( error => res.status(500).send(error) )
-    })
-
-    Router.post( '/runner/:service/:fun', (req, res) => {
-      if(!this.Services[req.params.service]) {
-        this.LogMissingService(req.params.service)
-        return res.status(500).send('MISSING SERVICE')
-      }
-      if(!this.Services[req.params.service][req.params.fun]) {
-        this.LogMissingServiceFunction(req.params.service, req.params.fun)
-        return res.status(500).send('MISSING SERVICE FUNCTION')
-      }
-
-      this.Services[req.params.service][req.params.fun]
-        .call( null, { params: req.body } )
-        .then( data => res.send(data) )
-        .catch( error => res.status(500).send(error) )
-    })
-
-    Router.get( '/tableheaders/:model', (req, res) => {
-      if(!this.Schemas[req.params.model]) {
-        this.LogMissingModel(req.params.model)
-        return res.status(500).send('MISSING MODEL')
-      }
-
-      res.send(this.GetHeaders(req.params.model))
-    })
-
-    Router.get( '/:model/find', async (req, res) => {
-      if(!this.Schemas[req.params.model]) {
-        this.LogMissingModel(req.params.model)
-        return res.status(500).send('MISSING MODEL')
-      }
-
-      if(!req.query.filter) req.query.filter = "{}"
-      if(!req.query.sort) req.query.sort = "{}"
-
-      const MFunctions = this.Middlewares[req.params.model].R
-
-      if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      this.MongooseConnection.model(req.params.model)
-        .find( JSON.parse(req.query.filter), req.query.projection )
-        .lean({ autopopulate: true, virtuals: true, getters: true })
-        .sort( JSON.parse(req.query.sort) )
-        .skip( Number(req.query.skip) || 0 )
-        .limit( Number(req.query.limit) || null )
-        .then( async results => {
-          this.RemoveDeclinedFields(req.params.model, results, req.accesslevel)
-          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-
-          res.send(results)
-        })
-        .catch( error => res.status(500).send(error) )
-    })
-
-    Router.post( '/search/:model', async (req, res) => {
-      if(!this.Schemas[req.params.model]) {
-        this.LogMissingModel(req.params.model)
-        return res.status(500).send('MISSING MODEL')
-      }
-
-      const MFunctions = this.Middlewares[req.params.model].R
-      if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-      
-      this.MongooseConnection.model(req.params.model)
-        .find(req.body.filter || {})
-        .lean({ autopopulate: true, virtuals: true, getters: true })
-        .then( async allData => {
-          this.RemoveDeclinedFields(req.params.model, allData, req.accesslevel)
-          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-          
-          if(!req.body.threshold) req.body.threshold = 0.4
-          if(!req.body.pattern) return res.send(allData)
-          if(!req.body.keys || req.body.keys.length == 0) req.body.keys = this.GetSchemaKeys(req.params.model, req.body.depth)
-
-          const fuse = new Fuse(allData, {
-            includeScore: false,
-            keys: req.body.keys,
-            threshold: req.body.threshold
-          })
-
-          let results = fuse.search(req.body.pattern).map(r => r.item)
-          res.send(results)
-        })
-        .catch( error => res.status(500).send(error))
-    })
-
-    Router.get( "/:model/:id", async (req, res) => {
-      if(!this.Schemas[req.params.model]) {
-        this.LogMissingModel(req.params.model)
-        return res.status(500).send('MISSING MODEL')
-      }
-
-      const MFunctions = this.Middlewares[req.params.model].R
-      if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-
-      this.MongooseConnection.model(req.params.model)
-        .findOne({_id: req.params.id}, req.query.projection)
-        .lean({ autopopulate: true, virtuals: true, getters: true })
-        .then( async results => {
-          this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], results, req.accesslevel)
-          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-
-          res.send(results)
-        })
-        .catch( error => res.status(500).send(error))
-    })
-
-    if(this.FileDIR) {
-      // TODO
-      Router.post( "/fileupload", this.upload.single('file'), (req, res) => {
-        if(req.file.mimetype.split('/')[0] == 'image') return this.handleImageUpload(req, res)
-
-        let file          = JSON.parse(JSON.stringify(req.file))
-        let extension     = file.originalname.split('.').pop()
-        let filePath      = `${file.filename}.${extension}`
-
-        fs.renameSync(req.file.path, `${file.path}.${extension}`)
-
-        let fileData = {
-          name: file.originalname,
-          path: filePath,
-          size: file.size,
-          extension: extension,
-        }
-        CRUDFileModel.create(fileData, (err, file) => {
-          if(err) res.status(500).send(err)
-          else res.send(file)
-        })
-      })
-
-      // TODO
-      Router.delete( "/filedelete/:id", (req, res) => {
-        CRUDFileModel.findOne({_id: req.params.id})
-          .then( file => {
-            let realPath = path.resolve( this.FileDIR, file.path )
-            if(realPath.indexOf(this.FileDIR) != 0) return res.status(500).send('Invalid file path!')
-
-            fs.unlinkSync(realPath)
-            let thumbnailPath = realPath.replace('.', '_thumbnail.')
-            if(fs.existsSync(thumbnailPath)) fs.unlinkSync(thumbnailPath)
-
-            CRUDFileModel.deleteOne({_id: file._id})
-              .then( () => res.send() )
-              .catch( err => res.status(500).send(err) )
-          })
-          .catch( err => res.status(500).send(err) )
-      })
-    }
-
-    Router.post( "/:model", async (req, res) => {
-      if(!this.Schemas[req.params.model]) {
-        this.LogMissingModel(req.params.model)
-        return res.status(500).send('MISSING MODEL')
-      }
-
-      this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], req.body, req.accesslevel, 'minWriteAccess')
-
-      const MFunctions = this.Middlewares[req.params.model].C
-      if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-
-      const Model = this.MongooseConnection.model(req.params.model)
-      const ModelInstance = new Model(req.body)
-      ModelInstance.save()
-        .then( async results => {
-          this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], results, req.accesslevel)
-          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-
-          res.send(results)
-        })
-        .catch( err => res.status(500).send(err) )
-    })
-
-    Router.patch( "/:model", async (req, res) => {
-      if(!this.Schemas[req.params.model]) {
-        this.LogMissingModel(req.params.model)
-        return res.status(500).send('MISSING MODEL')
-      }
-
-      this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], req.body, req.accesslevel, 'minWriteAccess')
-      
-      const MFunctions = this.Middlewares[req.params.model].U
-      if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-
-      this.MongooseConnection.model(req.params.model)
-        .updateOne({ _id: req.body._id }, req.body)
-        .then(async results => {
-          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-
-          res.send(results)
-        })
-        .catch( err => res.status(500).send(err) )
-    })
-
-    Router.delete( "/:model/:id", async (req, res) => {
-      if(!this.Schemas[req.params.model]) {
-        this.LogMissingModel(req.params.model)
-        return res.status(500).send('MISSING MODEL')
-      }
-
-      const declinedPaths = this.GetDeclinedPaths(req.params.model, req.accesslevel, 'minWriteAccess', true)
-      if(declinedPaths.length) return res.status(500).send('EPERM')
-      
-      const MFunctions = this.Middlewares[req.params.model].D
-      if( MFunctions.before && (await eval(MFunctions.before)) == true ) return
-
-      this.MongooseConnection.model(req.params.model)
-        .deleteOne({ _id: req.params.id })
-        then(async results => {
-          if( MFunctions.after && (await eval(MFunctions.after)) == true ) return
-          
-          res.send(results)
-        })
-        .catch( err => res.status(500).send(err) )
-    })
-
-    return Router
-  }
-
   // TODO
   handleImageUpload(req, res) {
     let file          = JSON.parse(JSON.stringify(req.file))
@@ -651,20 +383,285 @@ class CrudEngine {
     })
   }
 
-  addMiddleware( modelName, operation, timing, middlewareFunction ) {
-    return new Promise( (resolve, reject) => {
-      if( !this.Middlewares[modelName] ) return reject( new Error(`Middleware: No model found with name: ${modelName}`) )
-      if( !this.Operations.includes(operation) ) return reject( new Error(`Middleware: Operation should be one of: ${this.Operations}`) )
-      if( !this.Timings.includes(timing) ) return reject( new Error(`Middleware: Timing should be one of: ${this.Timings}`) )
+  GenerateRoutes() {
+    Router.get( '/schema', (req, res) => res.send(this.DecycledSchemas) )
 
-      this.Middlewares[modelName][operation][timing] = `(${middlewareFunction.toString()})()`
-      return resolve('Middleware added')
+    Router.get( '/schema/:model', (req, res) => {
+      if(!this.Schemas[this.BaseDBString][req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
+      res.send(this.DecycledSchemas[req.params.model])
     })
+
+    Router.post( '/schemakeys/:model', (req, res) => {
+      if(!this.Schemas[this.BaseDBString][req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
+      res.send(this.GetSchemaKeys(req.params.model, req.body.depth))
+    })
+
+    Router.get( '/count/:model', (req, res) => {
+      if(!this.Schemas[this.BaseDBString][req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
+      if(!req.query.filter) req.query.filter = '{}'
+
+      this.MongooseConnection.model(req.params.model).countDocuments(JSON.parse(req.query.filter), (err, count) => {
+        if(err) res.status(500).send(err)
+        else res.send({count})
+      })
+    })
+
+    Router.get( '/tableheaders/:model', (req, res) => {
+      if(!this.Schemas[this.BaseDBString][req.params.model]) {
+        this.LogMissingModel(req.params.model)
+        return res.status(500).send('MISSING MODEL')
+      }
+
+      res.send(this.GetHeaders(req.params.model))
+    })
+
+    Router.get( '/getter/:service/:fun', (req, res) => {
+      if(!this.Services[req.params.service]) {
+        this.LogMissingService(req.params.service)
+        return res.status(500).send('MISSING SERVICE')
+      }
+      if(!this.Services[req.params.service][req.params.fun]) {
+        this.LogMissingServiceFunction(req.params.service, req.params.fun)
+        return res.status(500).send('MISSING SERVICE FUNCTION')
+      }
+
+      this.Services[req.params.service][req.params.fun]
+        .call( null, { params: req.query } )
+        .then( result => res.send(result) )
+        .catch( error => res.status(500).send(error) )
+    })
+
+    Router.post( '/runner/:service/:fun', (req, res) => {
+      if(!this.Services[req.params.service]) {
+        this.LogMissingService(req.params.service)
+        return res.status(500).send('MISSING SERVICE')
+      }
+      if(!this.Services[req.params.service][req.params.fun]) {
+        this.LogMissingServiceFunction(req.params.service, req.params.fun)
+        return res.status(500).send('MISSING SERVICE FUNCTION')
+      }
+
+      this.Services[req.params.service][req.params.fun]
+        .call( null, { params: req.body } )
+        .then( result => res.send(result) )
+        .catch( error => res.status(500).send(error) )
+    })
+
+    Router.get( '/:model/find', (req, res) => {
+      function mainPart(req, res) {
+        if(!req.query.filter) req.query.filter = "{}"
+        if(!req.query.sort) req.query.sort = "{}"
+
+        return this.MongooseConnection.model(req.params.model)
+          .find( JSON.parse(req.query.filter), req.query.projection )
+          .lean({ autopopulate: true, virtuals: true, getters: true })
+          .sort( JSON.parse(req.query.sort) )
+          .skip( Number(req.query.skip) || 0 )
+          .limit( Number(req.query.limit) || null )
+      }
+
+      async function responsePart(req, res, results) {
+        this.RemoveDeclinedFields(req.params.model, results, req.accesslevel)
+
+        res.send(results)
+      }
+
+      this.CRUDRouteProcess(req, res, mainPart, responsePart, 'R')
+    })
+
+    Router.post( '/search/:model', async (req, res) => {
+      function mainPart(req, res) {
+        return this.MongooseConnection.model(req.params.model)
+          .find(req.body.filter || {})
+          .lean({ autopopulate: true, virtuals: true, getters: true })
+      }
+
+      async function responsePart(req, res, results) {
+        this.RemoveDeclinedFields(req.params.model, results, req.accesslevel)
+        
+        if(!req.body.threshold) req.body.threshold = 0.4
+        if(!req.body.pattern) return res.send(results)
+        if(!req.body.keys || req.body.keys.length == 0) req.body.keys = this.GetSchemaKeys(req.params.model, req.body.depth)
+  
+        const fuse = new Fuse(results, {
+          includeScore: false,
+          keys: req.body.keys,
+          threshold: req.body.threshold
+        })
+  
+        let results = fuse.search(req.body.pattern).map(r => r.item)
+        res.send(results)
+      }
+
+      this.CRUDRouteProcess(req, res, mainPart, responsePart, 'R')
+    })
+
+    Router.get( "/:model/:id", async (req, res) => {
+      function mainPart(req, res) {
+        return this.MongooseConnection.model(req.params.model)
+          .findOne({_id: req.params.id}, req.query.projection)
+          .lean({ autopopulate: true, virtuals: true, getters: true })
+      }
+
+      async function responsePart(req, res, result) {
+        this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], result, req.accesslevel)
+
+        res.send(result)
+      }
+
+      this.CRUDRouteProcess(req, res, mainPart, responsePart, 'R')
+    })
+
+    Router.post( "/:model", async (req, res) => {
+      function mainPart(req, res) {
+        this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], req.body, req.accesslevel, 'minWriteAccess')
+  
+        const Model = this.MongooseConnection.model(req.params.model)
+        const ModelInstance = new Model(req.body)
+        return ModelInstance.save()
+      }
+
+      async function responsePart(req, res, result) {
+        this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], result, req.accesslevel)
+  
+        res.send(result)
+      }
+
+      this.CRUDRouteProcess(req, res, mainPart, responsePart, 'C')
+    })
+
+    Router.patch( "/:model", async (req, res) => {
+      function mainPart(req, res) {
+        this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], req.body, req.accesslevel, 'minWriteAccess')
+
+        return this.MongooseConnection.model(req.params.model)
+          .updateOne({ _id: req.body._id }, req.body)
+      }
+
+      async function responsePart(req, res, result) {
+        res.send(result)
+      }
+
+      this.CRUDRouteProcess(req, res, mainPart, responsePart, 'U')
+    })
+
+    Router.delete( "/:model/:id", async (req, res) => {
+      function mainPart(req, res) {
+        const declinedPaths = this.GetDeclinedPaths(req.params.model, req.accesslevel, 'minWriteAccess', true)
+        if(declinedPaths.length) return Promise.reject('EPERM')
+  
+        return this.MongooseConnection.model(req.params.model)
+        .deleteOne({ _id: req.params.id })
+      }
+
+      async function responsePart(req, res, result) {
+        res.send(result)
+      }
+
+      this.CRUDRouteProcess(req, res, mainPart, responsePart, 'D')
+    })
+
+    // TODO
+    if(this.FileDIR) {
+      Router.use( `${this.ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
+
+      Router.post( "/fileupload", this.upload.single('file'), (req, res) => {
+        if(req.file.mimetype.split('/')[0] == 'image') return this.handleImageUpload(req, res)
+
+        let file          = JSON.parse(JSON.stringify(req.file))
+        let extension     = file.originalname.split('.').pop()
+        let filePath      = `${file.filename}.${extension}`
+
+        fs.renameSync(req.file.path, `${file.path}.${extension}`)
+
+        let fileData = {
+          name: file.originalname,
+          path: filePath,
+          size: file.size,
+          extension: extension,
+        }
+        CRUDFileModel.create(fileData, (err, file) => {
+          if(err) res.status(500).send(err)
+          else res.send(file)
+        })
+      })
+
+      Router.delete( "/filedelete/:id", (req, res) => {
+        CRUDFileModel.findOne({_id: req.params.id})
+          .then( file => {
+            let realPath = path.resolve( this.FileDIR, file.path )
+            if(realPath.indexOf(this.FileDIR) != 0) return res.status(500).send('Invalid file path!')
+
+            fs.unlinkSync(realPath)
+            let thumbnailPath = realPath.replace('.', '_thumbnail.')
+            if(fs.existsSync(thumbnailPath)) fs.unlinkSync(thumbnailPath)
+
+            CRUDFileModel.deleteOne({_id: file._id})
+              .then( () => res.send() )
+              .catch( err => res.status(500).send(err) )
+          })
+          .catch( err => res.status(500).send(err) )
+      })
+    }
+
+    return Router
+  }
+
+  async CRUDRouteProcess(req, res, mainPart, responsePart, operation) {
+    if(!this.Schemas[this.BaseDBString][req.params.model]) {
+      this.LogMissingModel(req.params.model)
+      return res.status(500).send('MISSING MODEL')
+    }
+
+    const MiddlewareFunctions = this.Middlewares[req.params.model][operation]
+    MiddlewareFunctions.before.call(this, req, res)
+      .then( () => {
+        mainPart.call(this, req, res)
+          .then( result => {
+            MiddlewareFunctions.after.call(this, req, res, result)
+              .then( () => {
+                responsePart.call(this, req, res, result)
+                  .catch( err => {res.status(500).send(err); console.log(err)} )
+              })
+              .catch( message => this.LogMiddlewareMessage(req.params.model, operation, 'after', message) )
+          })
+          .catch( err => {res.status(500).send(err); console.log(err)} )
+      })
+      .catch( message => this.LogMiddlewareMessage(req.params.model, operation, 'before', message) )
+  }
+
+  addMiddleware( modelName, operation, timing, middlewareFunction ) {
+      if(!this.Middlewares[modelName]) {
+        this.LogMissingModel(modelName)
+        throw new Error(`MISSING MODEL: ${modelName}`)
+      }
+      if(!this.Operations.includes(operation)) {
+        this.LogUnknownOperation(operation)
+        throw new Error(`Middleware: Operation should be one of: ${this.Operations}`)
+      }
+      if(!this.Timings.includes(timing)) {
+        this.LogUnknownTiming(timing)
+        throw new Error(`Middleware: Timing should be one of: ${this.Timings}`)
+      }
+
+      this.Middlewares[modelName][operation][timing] = middlewareFunction
   }
 
   LogBreakingChanges() {
-    console.log('\x1b[38;5;221m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE WARNING:')
-    console.log('\x1b[38;5;221m%s\x1b[0m', `
+    console.log('\x1b[36m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE CHANGES:')
+    console.log('\x1b[36m%s\x1b[0m', `
 BREAKING CHANGES since version 1.4.2:
 
 The following config fields were renamed:
@@ -682,8 +679,8 @@ There is also no maximum accesslevel.\n`)
   LogMixedType(key, name) {
     if(!this.ShowWarnings) return
 
-    console.log('\x1b[38;5;81m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE WARNING:')
-    console.log('\x1b[38;5;81m%s\x1b[0m', `
+    console.log('\x1b[93m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE WARNING:')
+    console.log('\x1b[93m%s\x1b[0m', `
 'Mixed' type field '${key}'!
 To get subheaders for this field use the following syntax:
 ${key}: {
@@ -707,8 +704,8 @@ ${key}: {
   LogMissingModel(modelName) {
     if(!this.ShowErrors) return
     
-    console.log('\x1b[38;5;9m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE ERROR:')
-    console.log('\x1b[38;5;9m%s\x1b[0m', `
+    console.log('\x1b[91m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE ERROR:')
+    console.log('\x1b[91m%s\x1b[0m', `
 MISSING MODEL: '${modelName}'
 
 There is no model registered with the name '${modelName}'.
@@ -722,8 +719,8 @@ If the name is correct check, if:
   LogMissingService(serviceName) {
     if(!this.ShowErrors) return
     
-    console.log('\x1b[38;5;9m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE ERROR:')
-    console.log('\x1b[38;5;9m%s\x1b[0m', `
+    console.log('\x1b[91m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE ERROR:')
+    console.log('\x1b[91m%s\x1b[0m', `
 MISSING SERVICE: '${serviceName}'
 
 There is no service registered with the name '${serviceName}'.
@@ -737,8 +734,8 @@ If the name is correct check, if:
   LogMissingServiceFunction(serviceName, functionName) {
     if(!this.ShowErrors) return
     
-    console.log('\x1b[38;5;9m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE ERROR:')
-    console.log('\x1b[38;5;9m%s\x1b[0m', `
+    console.log('\x1b[91m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE ERROR:')
+    console.log('\x1b[91m%s\x1b[0m', `
 MISSING SERVICE FUNCTION: '${functionName}'
 
 There is no function in the service '${serviceName}' with the name '${functionName}'.
@@ -746,6 +743,45 @@ This is most likely just a typo.
 
 If the name is correct check, if:
   • the '${serviceName}' service is the one containing the function\n`)
+  }
+
+LogUnknownOperation(operation) {
+  if(!this.ShowErrors) return
+  
+  console.log('\x1b[91m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE ERROR:')
+  console.log('\x1b[91m%s\x1b[0m', `
+UNKNOWN OPERATION: '${operation}'
+
+The operation '${operation}' is not known.
+Operation should be one of:
+  • 'C'
+  • 'R'
+  • 'U'
+  • 'D'\n`)
+  }
+
+LogUnknownTiming(timing) {
+  if(!this.ShowErrors) return
+  
+  console.log('\x1b[91m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE ERROR:')
+  console.log('\x1b[91m%s\x1b[0m', `
+UNKNOWN TIMING: '${timing}'
+
+The timing '${timing}' is not known.
+Timing should be one of:
+  • 'before'
+  • 'after'\n`)
+  }
+
+LogMiddlewareMessage(modelName, operation, timing, message) {
+  if(!this.ShowLogs) return
+  
+  console.log('\x1b[34m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE LOG:')
+  console.log('\x1b[34m%s\x1b[0m', `
+REQUEST STOPPED 
+
+The custom '${modelName} -> ${operation} -> ${timing}' middleware stopped a request.
+Given reason: '${message}'\n`)
   }
 }
 
