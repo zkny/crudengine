@@ -1,235 +1,136 @@
-const { load } = require('protobufjs');
-
 export default class __API {
-  constructor( axios, Prefix, ServeStaticPath = 'static', defaultFilter = {} ) {
+  constructor(axios, Prefix, ServeStaticPath = 'static', defaultFilter = {}) {
     this.$axios = axios
     this.Prefix = Prefix
     this.ServeStaticPath = ServeStaticPath
     this.DefaultFilter = defaultFilter
   }
-  Count(ModelName, filter = this.DefaultFilter) {
+
+  Count(modelName, filter = this.DefaultFilter) {
     return new Promise((resolve, reject) => {
-      this.$axios.$get(`${this.Prefix}/count/${ModelName}`, {
-        params: {filter}
+      this.$axios.$get(`${this.Prefix}/count/${modelName}`, {
+        params: {filter},
       })
-      .then( r => resolve(r.count))
-      .catch( Error => reject(Error))
+      .then( res => resolve(res.count) )
+      .catch( err => reject(err) )
     })
   }
-  GetFileUrl(File) {
+
+  GetFileUrl(file) {
     return {
-      path: `${this.$axios.defaults.baseURL}/${this.ServeStaticPath}/${File.path}`,
-      thumbnail: `${this.$axios.defaults.baseURL}/${this.ServeStaticPath}/${File.thumbnailPath}`,
+      path: `${this.$axios.defaults.baseURL}/${this.ServeStaticPath}/${file.path}`,
+      thumbnail: `${this.$axios.defaults.baseURL}/${this.ServeStaticPath}/${file.thumbnailPath}`,
     }
   }
-  GetFile(File) {
+
+  GetFile(file) {
     return new Promise((resolve, reject) => {
-      this.$axios.$get(`${this.Prefix}/${this.ServeStaticPath}/${File.path}`, { responseType: 'blob' })
-      .then( r => {
-        resolve(window.URL.createObjectURL( new Blob([r]) ))
-      }).catch( Error => reject(Error))
-    })
-  }
-  GetThumbnail(File) {
-    return new Promise((resolve, reject) => {
-      this.$axios.$get(`${this.Prefix}/${this.ServeStaticPath}/${File.thumbnailPath}`, { responseType: 'blob' })
-      .then( r => {
-        resolve(window.URL.createObjectURL( new Blob([r]) ))
-      }).catch( Error => reject(Error))
-    })
-  }
-  initProto(Protofile) {
-    return new Promise((resolve, reject) => {
-      load(Protofile, (error, api) => {
-        if (error) return reject()
-        this.API = api
-        resolve()
+      this.$axios.$get(`${this.Prefix}/${this.ServeStaticPath}/${file.path}`, {
+        responseType: 'blob',
       })
+      .then( res => resolve(URL.createObjectURL(res)) )
+      .catch( err => reject(err) )
     })
   }
-  _capitalize( string ) {
-    return string.charAt(0).toUpperCase() + string.slice(1)
-  }
-  GetService(Service, Function, Params) {
-    return new Promise( (resolve, reject) => {
-      this.$axios.$get(`/${this.Prefix}/getter/${Service.toLowerCase()}/${Function}`, { params: Params })
-      .then( r => resolve(r))
-      .catch( Error => reject(Error))
-    })
-  }
-  RunService(Service, Function, Params) {
-    return new Promise( (resolve, reject) => {
-      this.$axios.$post(`/${this.Prefix}/runner/${Service.toLowerCase()}/${Function}`, Params )
-      .then( r => resolve(r))
-      .catch( Error => reject(Error))
-    })
-  }
-  Schema(ModelName = null) {
-    if (ModelName) {
-      return new Promise((resolve, reject) => {
-        this.$axios.$get(`/${this.Prefix}/schema/${ModelName}`)
-        .then( r => resolve(r))
-        .catch( Error => reject(Error))
+
+  GetThumbnail(file) {
+    return new Promise((resolve, reject) => {
+      this.$axios.$get(`${this.Prefix}/${this.ServeStaticPath}/${file.thumbnailPath}`, {
+        responseType: 'blob',
       })
-    }
-    return new Promise((resolve, reject) => {
-      this.$axios.$get(`/${this.Prefix}/schema`)
-      .then( r => resolve(r))
-      .catch( Error => reject(Error))
+      .then( res => resolve(URL.createObjectURL(res)) ) 
+      .catch( err => reject(err) )
     })
   }
-  SchemaKeys(ModelName, Depth) {
-    return new Promise((resolve, reject) => {
-      this.$axios.$post(`/${this.Prefix}/schemakeys/${ModelName}`, { depth: Depth })
-      .then( r => resolve(r))
-      .catch( Error => reject(Error))
+
+  GetService(serviceName, functionName, params) {
+    return this.$axios.$get(`/${this.Prefix}/getter/${serviceName.toLowerCase()}/${functionName}`, {
+      params: params,
     })
   }
-  Read( Model, Options = {}) {
-    return new Promise((resolve, reject) => {
-      this.$axios.$get(`/${this.Prefix}/${this._capitalize(Model)}/find`, {
-        params: {
-          filter: Options.filter || this.DefaultFilter,
-          projection: Options.projection,
-          sort: Options.sort || {},
-          skip: Options.skip,
-          limit: Options.limit
-        }
-      }).then( r => resolve(r))
-      .catch( Error => reject(Error))
+
+  RunService(serviceName, functionName, params) {
+    return this.$axios.$post(`/${this.Prefix}/runner/${serviceName.toLowerCase()}/${functionName}`, params)
+  }
+
+  Schema(modelName = null) {
+    if(modelName)
+      return this.$axios.$get(`/${this.Prefix}/schema/${modelName}`)
+
+    return this.$axios.$get(`/${this.Prefix}/schema`)
+  }
+
+  SchemaKeys(modelName, depth) {
+    return this.$axios.$post(`/${this.Prefix}/schemakeys/${modelName}`, {
+      depth: depth,
     })
   }
-  Get( Model, Id, Options = {}) {
-    return new Promise((resolve, reject) => {
-      this.$axios.$get(`/${this.Prefix}/${this._capitalize(Model)}/${Id}`, {
-        params: {
-          projection: Options.projection,
-        }
-      }).then( r => resolve(r))
-      .catch( Error => reject(Error))
-    })
-  }
-  Create( Model, Data ) {
-    return new Promise( async (resolve, reject) => {
-      let promises = []
 
-      this.getFileKeys(Data, promises)
-      let uploadedFiles = await Promise.all(promises)
-      this.setFileFields(Data, uploadedFiles)
-
-      this.$axios.$post(`/${this.Prefix}/${this._capitalize(Model)}`, Data)
-        .then( r => resolve(r))
-        .catch( async Error => {
-          promises = []
-
-          for(let file of uploadedFiles)
-            promises.push( this.DeleteFile(file.path) )
-
-          await Promise.all(promises)
-          reject(Error)
-        })
-    })
-  }
-  setFileFields(object, results) {
-    for( let key in object) {
-      if( typeof object[key] == 'object' )
-        this.setFileFields(object[key], results)
-
-      if( object[key] instanceof File )
-        object[key] = results.shift().path
-    }
-  }
-  getFileKeys(object, promises) {
-    for( let key in object) {
-      if( typeof object[key] == 'object' )
-        this.getFileKeys(object[key], promises)
-
-      if( object[key] instanceof File )
-        promises.push(this.UploadFile(object[key]))
-    }
-  }
-  UploadFile( File, Callback ) {
-    return new Promise((resolve, reject) => {
-
-      const config = {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: function(progressEvent) {
-          let percentage = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-          Callback(percentage)
-        }
+  Read(modelName, options = {}) {
+    return this.$axios.$get(`/${this.Prefix}/${modelName}/find`, {
+      params: {
+        filter: options.filter || this.DefaultFilter,
+        projection: options.projection,
+        sort: options.sort || {},
+        skip: options.skip,
+        limit: options.limit,
       }
-
-      let formData = new FormData()
-
-      formData.append('file', File)
-      this.$axios.$post(`/${this.Prefix}/fileupload`, formData, config )
-        .then( r => resolve(r))
-        .catch( Error => reject(Error) )
-    })
-  }
-  DeleteFile( File ) {
-    return new Promise((resolve, reject) => {
-      this.$axios.$delete(`/${this.Prefix}/filedelete/${File._id}`)
-        .then( r => resolve(r) )
-        .catch( Error => reject(Error) )
-    })
-  }
-  Update( Model, Data ) {
-    return new Promise((resolve, reject) => {
-      this.$axios.$patch(`/${this.Prefix}/${this._capitalize(Model)}`, Data)
-      .then( r => resolve(r))
-      .catch( Error => reject(Error))
-    })
-  }
-  Delete( Model, Id ) {
-    return new Promise((resolve, reject) => {
-      this.$axios.$delete(`/${this.Prefix}/${this._capitalize(Model)}/${Id}`)
-      .then( r => resolve(r))
-      .catch( Error => reject(Error))
     })
   }
 
-  TableHeaders( Model ) {
-    return new Promise((resolve, reject) => {
-      this.$axios.$get(`/${this.Prefix}/tableheaders/${this._capitalize(Model)}`)
-      .then( r => resolve(r))
-      .catch( Error => reject(Error))
+  Get(modelName, id, options = {}) {
+    return this.$axios.$get(`/${this.Prefix}/${modelName}/${id}`, {
+      params: {
+        projection: options.projection,
+      }
     })
   }
 
-  Table( Model, Options = {} ) {
-    return new Promise((resolve, reject) => {
-      Promise.all([ this.TableHeaders(Model), this.Read(Model, Options) ])
-      .then( promises => resolve({ Headers: promises[0], Data: promises[1] }) )
-      .catch( Error => reject(Error))
-    })
+  Create(modelName, data) {
+    return this.$axios.$post(`/${this.Prefix}/${modelName}`, data)
   }
 
-  ProtoTable( Model, Options = {} ) {
-    return new Promise((resolve, reject) => {
-      Promise.all([ this.TableHeaders(Model), this.ProtoRead(Model, Options) ])
-      .then( promises => resolve({ Headers: promises[0], Data: promises[1] }) )
-      .catch( Error => reject(Error))
-    })
+  UploadFile(file, callback) {
+    const config = {
+      headers: {'Content-Type': 'multipart/form-data'},
+      onUploadProgress: event => {
+        let percentage = Math.round((event.loaded * 100) / event.total)
+        callback(percentage, event)
+      }
+    }
+
+    let formData = new FormData()
+    formData.append('file', file)
+
+    return this.$axios.$post(`/${this.Prefix}/fileupload`, formData, config)
   }
 
-  ProtoRead( Model, Options = {} ) {
-    return new Promise((resolve, reject) => {
-      if (!this.API) return reject("Protobuf file isn't set. Use initProto() to set it.")
+  DeleteFile(file) {
+    let id = typeof file == 'string' ? file : file._id
 
-      this.$axios.get(`/${this.Prefix}/proto/${this._capitalize(Model)}`, {
-        responseType: 'arraybuffer',
-        params: {
-          filter: Options.filter || this.DefaultFilter,
-          projection: Options.projection,
-          sort: Options.sort || {},
-          skip: Options.skip,
-          limit: Options.limit
-        }
-      }).then( response => {
-        const ProtoType = this.API.lookupType(`api.${this._capitalize(Model)}s`)
-        resolve( ProtoType.decode( new Uint8Array(response.data))[`${this._capitalize(Model)}s`] )
-      }).catch( Error => reject(Error))
+    return this.$axios.$delete(`/${this.Prefix}/filedelete/${id}`)
+  }
+
+  Update(modelName, data) {
+    return this.$axios.$patch(`/${this.Prefix}/${modelName}`, data)
+  }
+
+  Delete(modelName, id) {
+    return this.$axios.$delete(`/${this.Prefix}/${modelName}/${id}`)
+  }
+
+  TableHeaders(modelName) {
+    return this.$axios.$get(`/${this.Prefix}/tableheaders/${modelName}`)
+  }
+
+  Table(modelName, options = {}) {
+    return new Promise((resolve, reject) => {
+      Promise.all([
+        this.TableHeaders(modelName),
+        this.Read(modelName, options)
+      ])
+      .then( res => resolve({headers: res[0], data: res[1]}) )
+      .catch( err => reject(err))
     })
   }
 }

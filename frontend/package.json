@@ -18,7 +18,5 @@
   ],
   "license" : "(CC-BY-4.0)",
   "author": "zkny",
-  "dependencies": {
-    "protobufjs": "^6.9.0"
-  }
+  "dependencies": {}
 }

@@ -9,7 +9,6 @@ const Fuse          = require('fuse.js')
 const Router = express.Router()
 
 class CrudEngine {
-
   constructor({
       MongooseConnection = require('mongoose'),
       SchemaDIR,
@@ -383,6 +382,62 @@ class CrudEngine {
     })
   }
 
+  addMiddleware( modelName, operation, timing, middlewareFunction ) {
+    if(!this.Middlewares[modelName]) {
+      this.LogMissingModel(modelName)
+      throw new Error(`MISSING MODEL: ${modelName}`)
+    }
+    if(!this.Operations.includes(operation)) {
+      this.LogUnknownOperation(operation)
+      throw new Error(`Middleware: Operation should be one of: ${this.Operations}`)
+    }
+    if(!this.Timings.includes(timing)) {
+      this.LogUnknownTiming(timing)
+      throw new Error(`Middleware: Timing should be one of: ${this.Timings}`)
+    }
+
+    this.Middlewares[modelName][operation][timing] = middlewareFunction
+}
+
+  CRUDRoute(req, res, mainPart, responsePart, operation) {
+    if(!this.Schemas[this.BaseDBString][req.params.model]) {
+      this.LogMissingModel(req.params.model)
+      return res.status(500).send('MISSING MODEL')
+    }
+
+    const MiddlewareFunctions = this.Middlewares[req.params.model][operation]
+    MiddlewareFunctions.before.call(this, req, res)
+      .then( () => {
+        mainPart.call(this, req, res)
+          .then( result => {
+            MiddlewareFunctions.after.call(this, req, res, result)
+              .then( () => {
+                responsePart.call(this, req, res, result)
+                  .catch( err => {res.status(500).send(err); console.log(err)} )
+              })
+              .catch( message => this.LogMiddlewareMessage(req.params.model, operation, 'after', message) )
+          })
+          .catch( err => {res.status(500).send(err); console.log(err)} )
+      })
+      .catch( message => this.LogMiddlewareMessage(req.params.model, operation, 'before', message) )
+  }
+
+  ServiceRoute(req, res, paramsKey) {
+    if(!this.Services[req.params.service]) {
+      this.LogMissingService(req.params.service)
+      return res.status(500).send('MISSING SERVICE')
+    }
+    if(!this.Services[req.params.service][req.params.fun]) {
+      this.LogMissingServiceFunction(req.params.service, req.params.fun)
+      return res.status(500).send('MISSING SERVICE FUNCTION')
+    }
+
+    this.Services[req.params.service][req.params.fun]
+      .call( null, req[paramsKey] )
+      .then( result => res.send(result) )
+      .catch( error => res.status(500).send(error) )
+  }
+
   GenerateRoutes() {
     Router.get( '/schema', (req, res) => res.send(this.DecycledSchemas) )
 
@@ -428,35 +483,11 @@ class CrudEngine {
     })
 
     Router.get( '/getter/:service/:fun', (req, res) => {
-      if(!this.Services[req.params.service]) {
-        this.LogMissingService(req.params.service)
-        return res.status(500).send('MISSING SERVICE')
-      }
-      if(!this.Services[req.params.service][req.params.fun]) {
-        this.LogMissingServiceFunction(req.params.service, req.params.fun)
-        return res.status(500).send('MISSING SERVICE FUNCTION')
-      }
-
-      this.Services[req.params.service][req.params.fun]
-        .call( null, { params: req.query } )
-        .then( result => res.send(result) )
-        .catch( error => res.status(500).send(error) )
+      this.ServiceRoute(req, res, 'query')
     })
 
     Router.post( '/runner/:service/:fun', (req, res) => {
-      if(!this.Services[req.params.service]) {
-        this.LogMissingService(req.params.service)
-        return res.status(500).send('MISSING SERVICE')
-      }
-      if(!this.Services[req.params.service][req.params.fun]) {
-        this.LogMissingServiceFunction(req.params.service, req.params.fun)
-        return res.status(500).send('MISSING SERVICE FUNCTION')
-      }
-
-      this.Services[req.params.service][req.params.fun]
-        .call( null, { params: req.body } )
-        .then( result => res.send(result) )
-        .catch( error => res.status(500).send(error) )
+      this.ServiceRoute(req, res, 'body')
     })
 
     Router.get( '/:model/find', (req, res) => {
@@ -478,7 +509,7 @@ class CrudEngine {
         res.send(results)
       }
 
-      this.CRUDRouteProcess(req, res, mainPart, responsePart, 'R')
+      this.CRUDRoute(req, res, mainPart, responsePart, 'R')
     })
 
     Router.post( '/search/:model', async (req, res) => {
@@ -505,7 +536,7 @@ class CrudEngine {
         res.send(results)
       }
 
-      this.CRUDRouteProcess(req, res, mainPart, responsePart, 'R')
+      this.CRUDRoute(req, res, mainPart, responsePart, 'R')
     })
 
     Router.get( "/:model/:id", async (req, res) => {
@@ -521,7 +552,7 @@ class CrudEngine {
         res.send(result)
       }
 
-      this.CRUDRouteProcess(req, res, mainPart, responsePart, 'R')
+      this.CRUDRoute(req, res, mainPart, responsePart, 'R')
     })
 
     Router.post( "/:model", async (req, res) => {
@@ -539,7 +570,7 @@ class CrudEngine {
         res.send(result)
       }
 
-      this.CRUDRouteProcess(req, res, mainPart, responsePart, 'C')
+      this.CRUDRoute(req, res, mainPart, responsePart, 'C')
     })
 
     Router.patch( "/:model", async (req, res) => {
@@ -554,7 +585,7 @@ class CrudEngine {
         res.send(result)
       }
 
-      this.CRUDRouteProcess(req, res, mainPart, responsePart, 'U')
+      this.CRUDRoute(req, res, mainPart, responsePart, 'U')
     })
 
     Router.delete( "/:model/:id", async (req, res) => {
@@ -570,7 +601,7 @@ class CrudEngine {
         res.send(result)
       }
 
-      this.CRUDRouteProcess(req, res, mainPart, responsePart, 'D')
+      this.CRUDRoute(req, res, mainPart, responsePart, 'D')
     })
 
     // TODO
@@ -617,46 +648,6 @@ class CrudEngine {
     }
 
     return Router
-  }
-
-  async CRUDRouteProcess(req, res, mainPart, responsePart, operation) {
-    if(!this.Schemas[this.BaseDBString][req.params.model]) {
-      this.LogMissingModel(req.params.model)
-      return res.status(500).send('MISSING MODEL')
-    }
-
-    const MiddlewareFunctions = this.Middlewares[req.params.model][operation]
-    MiddlewareFunctions.before.call(this, req, res)
-      .then( () => {
-        mainPart.call(this, req, res)
-          .then( result => {
-            MiddlewareFunctions.after.call(this, req, res, result)
-              .then( () => {
-                responsePart.call(this, req, res, result)
-                  .catch( err => {res.status(500).send(err); console.log(err)} )
-              })
-              .catch( message => this.LogMiddlewareMessage(req.params.model, operation, 'after', message) )
-          })
-          .catch( err => {res.status(500).send(err); console.log(err)} )
-      })
-      .catch( message => this.LogMiddlewareMessage(req.params.model, operation, 'before', message) )
-  }
-
-  addMiddleware( modelName, operation, timing, middlewareFunction ) {
-      if(!this.Middlewares[modelName]) {
-        this.LogMissingModel(modelName)
-        throw new Error(`MISSING MODEL: ${modelName}`)
-      }
-      if(!this.Operations.includes(operation)) {
-        this.LogUnknownOperation(operation)
-        throw new Error(`Middleware: Operation should be one of: ${this.Operations}`)
-      }
-      if(!this.Timings.includes(timing)) {
-        this.LogUnknownTiming(timing)
-        throw new Error(`Middleware: Timing should be one of: ${this.Timings}`)
-      }
-
-      this.Middlewares[modelName][operation][timing] = middlewareFunction
   }
 
   LogBreakingChanges() {
