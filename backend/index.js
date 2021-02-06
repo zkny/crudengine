@@ -15,9 +15,9 @@ class CrudEngine {
       ServiceDIR = null,
       FileDIR = null,
       ServeStaticPath = '/static',
-      ImageHeightSize = 800,
+      MaxImageSize = 800,
       CreateThumbnail = false,
-      ThumbnailSize = 200,
+      MaxThumbnailSize = 200,
       MaxHeaderDepth = 2,
       ShowLogs = true,
       ShowWarnings = true,
@@ -38,9 +38,9 @@ class CrudEngine {
     this.Operations           = ['C', 'R', 'U', 'D']
     this.Timings              = ['after', 'before']
     this.MaxHeaderDepth       = MaxHeaderDepth
-    this.ImageHeightSize      = ImageHeightSize
+    this.MaxImageSize         = MaxImageSize
     this.CreateThumbnail      = CreateThumbnail
-    this.ThumbnailSize        = ThumbnailSize
+    this.MaxThumbnailSize        = MaxThumbnailSize
     this.ShowLogs             = ShowLogs
     this.ShowWarnings         = ShowWarnings
     this.ShowErrors           = ShowErrors
@@ -333,10 +333,10 @@ class CrudEngine {
     let extension     = req.file.originalname.split('.').pop()
     let filePath      = `${req.file.filename}.${extension}`
 
-    this.resizeImageTo(multerPath, this.ImageHeightSize, `${multerPath}.${extension}`)
+    this.resizeImageTo(multerPath, this.MaxImageSize, `${multerPath}.${extension}`)
       .then( () => {
         if(this.CreateThumbnail)
-          return this.resizeImageTo(multerPath, this.ThumbnailSize, `${multerPath}_thumbnail.${extension}`)
+          return this.resizeImageTo(multerPath, this.MaxThumbnailSize, `${multerPath}_thumbnail.${extension}`)
         else
           return Promise.resolve()
       })

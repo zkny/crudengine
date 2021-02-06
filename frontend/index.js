@@ -80,12 +80,17 @@ export default class __API {
   }
 
   GetFileURLs(file) {
-    return {
+    let urls = {
       absolutePath: `${this.$axios.defaults.baseURL}/${this.Prefix}/${this.ServeStaticPath}/${file.path}`,
       relativePath: `/${this.Prefix}/${this.ServeStaticPath}/${file.path}`,
-      absoluteThumbnailPath: `${this.$axios.defaults.baseURL}/${this.Prefix}/${this.ServeStaticPath}/${file.thumbnailPath}`,
-      relativeThumbnailPath: `/${this.Prefix}/${this.ServeStaticPath}/${file.thumbnailPath}`,
     }
+
+    if(file.thumbnailPath) {
+      ursl.absoluteThumbnailPath = `${this.$axios.defaults.baseURL}/${this.Prefix}/${this.ServeStaticPath}/${file.thumbnailPath}`
+      ursl.relativeThumbnailPath = `/${this.Prefix}/${this.ServeStaticPath}/${file.thumbnailPath}`
+    }
+
+    return urls
   }
 
   GetFileURL(file, percentCallback) {
