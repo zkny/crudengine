@@ -16,8 +16,8 @@ class CrudEngine {
       FileDIR = null,
       ServeStaticPath = '/static',
       ImageHeightSize = 800,
-      Thumbnail = false,
-      ThumbnailSize = 250,
+      CreateThumbnail = false,
+      ThumbnailSize = 200,
       MaxHeaderDepth = 2,
       ShowLogs = true,
       ShowWarnings = true,
@@ -39,7 +39,7 @@ class CrudEngine {
     this.Timings              = ['after', 'before']
     this.MaxHeaderDepth       = MaxHeaderDepth
     this.ImageHeightSize      = ImageHeightSize
-    this.Thumbnail            = Thumbnail
+    this.CreateThumbnail      = CreateThumbnail
     this.ThumbnailSize        = ThumbnailSize
     this.ShowLogs             = ShowLogs
     this.ShowWarnings         = ShowWarnings
@@ -48,11 +48,8 @@ class CrudEngine {
 
     this.LogBreakingChanges()
 
-    if(FileDIR) {
-      if(!fs.existsSync(FileDIR)) fs.mkdirSync(path.resolve(FileDIR), { recursive: true })
-
-      this.upload = multer({ dest: FileDIR })
-    }
+    if(FileDIR)
+      this.upload = multer({dest: FileDIR})
 
     if(ServiceDIR) {
       for( const ServiceFile of fs.readdirSync(ServiceDIR) ) {
@@ -331,58 +328,51 @@ class CrudEngine {
     return headers
   }
 
-  // TODO
   handleImageUpload(req, res) {
-    let file          = JSON.parse(JSON.stringify(req.file))
-    let extension     = file.originalname.split('.').pop()
-    let filePath      = `${file.filename}.${extension}`
+    let multerPath    = req.file.path
+    let extension     = req.file.originalname.split('.').pop()
+    let filePath      = `${req.file.filename}.${extension}`
 
-    sharp(req.file.path)
-    .resize({
-      height: this.ImageHeightSize,
-      withoutEnlargement: true
-    })
-    .toFile(`${file.path}.${extension}`, (err, info) => {
-      if(err) return res.send(err)
-
-      let fileData = {
-        name: file.originalname,
-        path: filePath,
-        size: file.size,
-        extension: extension,
-        isImage: true
-      }
-
-      if(this.Thumbnail) {
-        return sharp(req.file.path)
-        .resize({
-          height: this.ThumbnailSize,
-          withoutEnlargement: true
-        })
-        .toFile(`${file.path}_thumbnail.${extension}`, (err, th_info) => {
-          if(err) return res.send(err)
-
-          fileData.thumbnailPath = `${file.filename}_thumbnail.${extension}`
-
-          fs.unlinkSync(file.path)
-
-          CRUDFileModel.create(fileData, (err, file) => {
-            if(err) res.status(500).send(err)
-            else res.send(file)
-          })
-        })
-      }
-
-      fs.unlinkSync(file.path)
-
-      CRUDFileModel.create(fileData, (err, file) => {
-        if(err) res.status(500).send(err)
-        else res.send(file)
+    this.resizeImageTo(multerPath, this.ImageHeightSize, `${multerPath}.${extension}`)
+      .then( () => {
+        if(this.CreateThumbnail)
+          return this.resizeImageTo(multerPath, this.ThumbnailSize, `${multerPath}_thumbnail.${extension}`)
+        else
+          return Promise.resolve()
       })
+      .then( () => fs.promises.unlink(multerPath) )
+      .then( () => CRUDFileModel.create({
+        name: req.file.originalname,
+        path: filePath,
+        size: req.file.size,
+        extension: extension,
+        isImage: true,
+        ...this.CreateThumbnail && {thumbnailPath: `${req.file.filename}_thumbnail.${extension}`}
+      }))
+      .then( file => res.send(file) )
+      .catch( err => {
+        console.error(err)
+        res.status(500).send(err)
+      })
+  }
+
+  resizeImageTo(sourcePath, size, destinationPath) {
+    if(size == null) return fs.promises.copyFile(sourcePath, destinationPath)
+    
+    return new Promise( (resolve, reject) => {
+      sharp(sourcePath)
+        .resize(size, size, {
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .toFile(destinationPath, (err, info) => {
+          if(err) reject(err)
+          else resolve(info)
+        })
     })
   }
 
-  addMiddleware( modelName, operation, timing, middlewareFunction ) {
+  addMiddleware(modelName, operation, timing, middlewareFunction) {
     if(!this.Middlewares[modelName]) {
       this.LogMissingModel(modelName)
       throw new Error(`MISSING MODEL: ${modelName}`)
@@ -490,6 +480,50 @@ class CrudEngine {
       this.ServiceRoute(req, res, 'body')
     })
 
+    if(this.FileDIR) {
+      Router.use( `${this.ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
+      Router.use( `${this.ServeStaticPath}`, (req, res) => res.status(404).send('NOT FOUND') )
+
+      Router.post( "/fileupload", this.upload.single('file'), (req, res) => {
+        if(req.file.mimetype.startsWith('image')) return this.handleImageUpload(req, res)
+
+        let multerPath    = req.file.path
+        let extension     = req.file.originalname.split('.').pop()
+        let filePath      = `${req.file.filename}.${extension}`
+
+        fs.renameSync(multerPath, `${multerPath}.${extension}`)
+
+        let fileData = {
+          name: req.file.originalname,
+          path: filePath,
+          size: req.file.size,
+          extension: extension,
+        }
+
+        CRUDFileModel.create(fileData, (err, file) => {
+          if(err) res.status(500).send(err)
+          else res.send(file)
+        })
+      })
+
+      Router.delete( "/filedelete/:id", (req, res) => {
+        CRUDFileModel.findOne({_id: req.params.id})
+          .then( file => {
+            let realPath = path.resolve(this.FileDIR, file.path)
+            let thumbnailPath = realPath.replace('.', '_thumbnail.')
+            if(!realPath.startsWith(this.FileDIR)) return res.status(500).send('INVALID PATH')
+
+            if(fs.existsSync(realPath)) fs.unlinkSync(realPath)
+            if(fs.existsSync(thumbnailPath)) fs.unlinkSync(thumbnailPath)
+
+            CRUDFileModel.deleteOne({_id: file._id})
+              .then( () => res.send() )
+              .catch( err => res.status(500).send(err) )
+          })
+          .catch( err => res.status(500).send(err) )
+      })
+    }
+
     Router.get( '/:model/find', (req, res) => {
       function mainPart(req, res) {
         if(!req.query.filter) req.query.filter = "{}"
@@ -591,7 +625,7 @@ class CrudEngine {
     Router.delete( "/:model/:id", async (req, res) => {
       function mainPart(req, res) {
         const declinedPaths = this.GetDeclinedPaths(req.params.model, req.accesslevel, 'minWriteAccess', true)
-        if(declinedPaths.length) return Promise.reject('EPERM')
+        if(declinedPaths.length) return Promise.reject('PERMISSION DENIED')
   
         return this.MongooseConnection.model(req.params.model)
         .deleteOne({ _id: req.params.id })
@@ -603,49 +637,6 @@ class CrudEngine {
 
       this.CRUDRoute(req, res, mainPart, responsePart, 'D')
     })
-
-    // TODO
-    if(this.FileDIR) {
-      Router.use( `${this.ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
-
-      Router.post( "/fileupload", this.upload.single('file'), (req, res) => {
-        if(req.file.mimetype.split('/')[0] == 'image') return this.handleImageUpload(req, res)
-
-        let file          = JSON.parse(JSON.stringify(req.file))
-        let extension     = file.originalname.split('.').pop()
-        let filePath      = `${file.filename}.${extension}`
-
-        fs.renameSync(req.file.path, `${file.path}.${extension}`)
-
-        let fileData = {
-          name: file.originalname,
-          path: filePath,
-          size: file.size,
-          extension: extension,
-        }
-        CRUDFileModel.create(fileData, (err, file) => {
-          if(err) res.status(500).send(err)
-          else res.send(file)
-        })
-      })
-
-      Router.delete( "/filedelete/:id", (req, res) => {
-        CRUDFileModel.findOne({_id: req.params.id})
-          .then( file => {
-            let realPath = path.resolve( this.FileDIR, file.path )
-            if(realPath.indexOf(this.FileDIR) != 0) return res.status(500).send('Invalid file path!')
-
-            fs.unlinkSync(realPath)
-            let thumbnailPath = realPath.replace('.', '_thumbnail.')
-            if(fs.existsSync(thumbnailPath)) fs.unlinkSync(thumbnailPath)
-
-            CRUDFileModel.deleteOne({_id: file._id})
-              .then( () => res.send() )
-              .catch( err => res.status(500).send(err) )
-          })
-          .catch( err => res.status(500).send(err) )
-      })
-    }
 
     return Router
   }

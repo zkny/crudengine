@@ -16,33 +16,6 @@ export default class __API {
     })
   }
 
-  GetFileUrl(file) {
-    return {
-      path: `${this.$axios.defaults.baseURL}/${this.ServeStaticPath}/${file.path}`,
-      thumbnail: `${this.$axios.defaults.baseURL}/${this.ServeStaticPath}/${file.thumbnailPath}`,
-    }
-  }
-
-  GetFile(file) {
-    return new Promise((resolve, reject) => {
-      this.$axios.$get(`${this.Prefix}/${this.ServeStaticPath}/${file.path}`, {
-        responseType: 'blob',
-      })
-      .then( res => resolve(URL.createObjectURL(res)) )
-      .catch( err => reject(err) )
-    })
-  }
-
-  GetThumbnail(file) {
-    return new Promise((resolve, reject) => {
-      this.$axios.$get(`${this.Prefix}/${this.ServeStaticPath}/${file.thumbnailPath}`, {
-        responseType: 'blob',
-      })
-      .then( res => resolve(URL.createObjectURL(res)) ) 
-      .catch( err => reject(err) )
-    })
-  }
-
   GetService(serviceName, functionName, params) {
     return this.$axios.$get(`/${this.Prefix}/getter/${serviceName.toLowerCase()}/${functionName}`, {
       params: params,
@@ -90,19 +63,69 @@ export default class __API {
     return this.$axios.$post(`/${this.Prefix}/${modelName}`, data)
   }
 
-  UploadFile(file, callback) {
-    const config = {
+  UploadFile(file, percentCallback) {
+    let config = {
       headers: {'Content-Type': 'multipart/form-data'},
-      onUploadProgress: event => {
-        let percentage = Math.round((event.loaded * 100) / event.total)
-        callback(percentage, event)
-      }
     }
+    if(percentCallback)
+      config.onUploadProgress = event => {
+        let percentage = Math.round((event.loaded * 100) / event.total)
+        percentCallback(percentage, event)
+      }
 
     let formData = new FormData()
     formData.append('file', file)
 
     return this.$axios.$post(`/${this.Prefix}/fileupload`, formData, config)
+  }
+
+  GetFileURLs(file) {
+    return {
+      absolutePath: `${this.$axios.defaults.baseURL}/${this.Prefix}/${this.ServeStaticPath}/${file.path}`,
+      relativePath: `/${this.Prefix}/${this.ServeStaticPath}/${file.path}`,
+      absoluteThumbnailPath: `${this.$axios.defaults.baseURL}/${this.Prefix}/${this.ServeStaticPath}/${file.thumbnailPath}`,
+      relativeThumbnailPath: `/${this.Prefix}/${this.ServeStaticPath}/${file.thumbnailPath}`,
+    }
+  }
+
+  GetFileURL(file, percentCallback) {
+    return new Promise((resolve, reject) => {
+      this.DownloadFile(file, percentCallback)
+        .then( res => resolve(URL.createObjectURL(res)) )
+        .catch( err => reject(err) )
+    })
+  }
+
+  DownloadFile(file, percentCallback) {
+    let path = typeof file == 'string' ? file : file.path
+    let config = {responseType: 'blob'}
+    if(percentCallback)
+      config.onDownloadProgress = event => {
+        let percentage = Math.round((event.loaded * 100) / event.total)
+        percentCallback(percentage, event)
+      }
+
+    return this.$axios.$get(`/${this.Prefix}/${this.ServeStaticPath}/${path}`, config)
+  }
+
+  GetThumbnailURL(file, percentCallback) {
+    return new Promise((resolve, reject) => {
+      this.DownloadThumbnail(file, percentCallback)
+        .then( res => resolve(URL.createObjectURL(res)) ) 
+        .catch( err => reject(err) )
+    })
+  }
+
+  DownloadThumbnail(file, percentCallback) {
+    let path = typeof file == 'string' ? file : file.thumbnailPath
+    let config = {responseType: 'blob'}
+    if(percentCallback)
+      config.onDownloadProgress = event => {
+        let percentage = Math.round((event.loaded * 100) / event.total)
+        percentCallback(percentage, event)
+      }
+
+    return this.$axios.$get(`/${this.Prefix}/${this.ServeStaticPath}/${path}`, config)
   }
 
   DeleteFile(file) {
