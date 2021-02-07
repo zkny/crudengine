@@ -18,6 +18,7 @@ class CrudEngine {
       MaxImageSize = 800,
       CreateThumbnail = false,
       MaxThumbnailSize = 200,
+      CheckAccess = true,
       MaxHeaderDepth = 2,
       ShowLogs = true,
       ShowWarnings = true,
@@ -25,10 +26,6 @@ class CrudEngine {
     }) {
     this.MongooseConnection   = MongooseConnection
     this.BaseDBString         = MongooseConnection.connections[0]._connectionString
-    this.FileDIR              = FileDIR
-    this.ServeStaticPath      = ServeStaticPath
-    this.SchemaDIR            = SchemaDIR
-    this.ServiceDIR           = ServiceDIR
     this.Schemas              = {[this.BaseDBString]: {}}
     this.PathSchemas          = {}
     this.DecycledSchemas      = {}
@@ -37,10 +34,15 @@ class CrudEngine {
     this.Middlewares          = {}
     this.Operations           = ['C', 'R', 'U', 'D']
     this.Timings              = ['after', 'before']
-    this.MaxHeaderDepth       = MaxHeaderDepth
+    this.SchemaDIR            = SchemaDIR
+    this.ServiceDIR           = ServiceDIR
+    this.FileDIR              = FileDIR
+    this.ServeStaticPath      = ServeStaticPath
     this.MaxImageSize         = MaxImageSize
     this.CreateThumbnail      = CreateThumbnail
-    this.MaxThumbnailSize        = MaxThumbnailSize
+    this.MaxThumbnailSize     = MaxThumbnailSize
+    this.CheckAccess          = CheckAccess
+    this.MaxHeaderDepth       = MaxHeaderDepth
     this.ShowLogs             = ShowLogs
     this.ShowWarnings         = ShowWarnings
     this.ShowErrors           = ShowErrors
@@ -538,7 +540,8 @@ class CrudEngine {
       }
 
       async function responsePart(req, res, results) {
-        this.RemoveDeclinedFields(req.params.model, results, req.accesslevel)
+        if(this.CheckAccess)
+          this.RemoveDeclinedFields(req.params.model, results, req.accesslevel)
 
         res.send(results)
       }
@@ -554,7 +557,8 @@ class CrudEngine {
       }
 
       async function responsePart(req, res, results) {
-        this.RemoveDeclinedFields(req.params.model, results, req.accesslevel)
+        if(this.CheckAccess)
+          this.RemoveDeclinedFields(req.params.model, results, req.accesslevel)
         
         if(!req.body.threshold) req.body.threshold = 0.4
         if(!req.body.pattern) return res.send(results)
@@ -581,7 +585,8 @@ class CrudEngine {
       }
 
       async function responsePart(req, res, result) {
-        this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], result, req.accesslevel)
+        if(this.CheckAccess)
+          this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], result, req.accesslevel)
 
         res.send(result)
       }
@@ -591,7 +596,8 @@ class CrudEngine {
 
     Router.post( "/:model", async (req, res) => {
       function mainPart(req, res) {
-        this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], req.body, req.accesslevel, 'minWriteAccess')
+        if(this.CheckAccess)
+          this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], req.body, req.accesslevel, 'minWriteAccess')
   
         const Model = this.MongooseConnection.model(req.params.model)
         const ModelInstance = new Model(req.body)
@@ -599,7 +605,8 @@ class CrudEngine {
       }
 
       async function responsePart(req, res, result) {
-        this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], result, req.accesslevel)
+        if(this.CheckAccess)
+          this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], result, req.accesslevel)
   
         res.send(result)
       }
@@ -609,7 +616,8 @@ class CrudEngine {
 
     Router.patch( "/:model", async (req, res) => {
       function mainPart(req, res) {
-        this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], req.body, req.accesslevel, 'minWriteAccess')
+        if(this.CheckAccess)
+          this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][req.params.model], req.body, req.accesslevel, 'minWriteAccess')
 
         return this.MongooseConnection.model(req.params.model)
           .updateOne({ _id: req.body._id }, req.body)
@@ -624,8 +632,10 @@ class CrudEngine {
 
     Router.delete( "/:model/:id", async (req, res) => {
       function mainPart(req, res) {
-        const declinedPaths = this.GetDeclinedPaths(req.params.model, req.accesslevel, 'minWriteAccess', true)
-        if(declinedPaths.length) return Promise.reject('PERMISSION DENIED')
+        if(this.CheckAccess) {
+          const declinedPaths = this.GetDeclinedPaths(req.params.model, req.accesslevel, 'minWriteAccess', true)
+          if(declinedPaths.length) return Promise.reject('PERMISSION DENIED')
+        }
   
         return this.MongooseConnection.model(req.params.model)
         .deleteOne({ _id: req.params.id })
