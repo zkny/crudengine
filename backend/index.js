@@ -1,19 +1,19 @@
 const express       = require('express')
-const fs            = require('fs')
-const path          = require('path')
 const multer        = require('multer')
 const sharp         = require('sharp')
-const CRUDFileModel = require('./schemas/CRUDFile')
 const Fuse          = require('fuse.js')
+const path          = require('path')
+const fs            = require('fs')
+const CRUDFileModel = require('./schemas/CRUDFile')
 
 const Router = express.Router()
 
 class CrudEngine {
   constructor({
       MongooseConnection = require('mongoose'),
-      SchemaDIR,
-      ServiceDIR = null,
-      FileDIR = null,
+      SchemaDir,
+      ServiceDir = null,
+      FileDir = null,
       ServeStaticPath = '/static',
       MaxImageSize = 800,
       CreateThumbnail = false,
@@ -34,9 +34,9 @@ class CrudEngine {
     this.Middlewares          = {}
     this.Operations           = ['C', 'R', 'U', 'D']
     this.Timings              = ['after', 'before']
-    this.SchemaDIR            = SchemaDIR
-    this.ServiceDIR           = ServiceDIR
-    this.FileDIR              = FileDIR
+    this.SchemaDir            = SchemaDir
+    this.ServiceDir           = ServiceDir
+    this.FileDir              = FileDir
     this.ServeStaticPath      = ServeStaticPath
     this.MaxImageSize         = MaxImageSize
     this.CreateThumbnail      = CreateThumbnail
@@ -50,16 +50,17 @@ class CrudEngine {
 
     this.LogBreakingChanges()
 
-    if(FileDIR)
-      this.upload = multer({dest: FileDIR})
+    if(FileDir)
+      this.upload = multer({dest: FileDir}) // multer will handle the saving of files, when one is uploaded
 
-    if(ServiceDIR) {
-      for( const ServiceFile of fs.readdirSync(ServiceDIR) ) {
+    // Imports every .js file from "ServiceDir" into the "Services" object
+    if(ServiceDir) {
+      for( const ServiceFile of fs.readdirSync(ServiceDir) ) {
         if( !ServiceFile.endsWith('.js') ) continue
         
         const ServiceName = ServiceFile.replace( '.js', '' )
         
-        this.Services[ServiceName] = require(`${ServiceDIR}/${ServiceFile}`)
+        this.Services[ServiceName] = require(`${ServiceDir}/${ServiceFile}`)
       }
     }
 
@@ -69,11 +70,17 @@ class CrudEngine {
     this.GeneratePathSchemas()
   }
 
+  
+  /**
+   * Imports every model from "SchemaDir" and creates a crudengine schema for it.
+   * Also creates default middlewares for them.
+   * Finally it handles the references between the schemas.
+   */
   GenerateSchemas() {
-    for( const SchemaFile of fs.readdirSync(this.SchemaDIR) ) {
-      if( !SchemaFile.endsWith('.js') ) continue
+    for( let schemaFile of fs.readdirSync(this.SchemaDir) ) {
+      if( !schemaFile.endsWith('.js') ) continue
 
-      let model = require(`${this.SchemaDIR}/${SchemaFile}`)
+      let model = require(`${this.SchemaDir}/${schemaFile}`)
       let modelName = model.modelName || model.default.modelName
 
       this.Schemas[this.BaseDBString][modelName] = this.GenerateSchema(model)
@@ -85,12 +92,17 @@ class CrudEngine {
       }
     }
 
+    // Now every schema is ready, we can ref them in each other
     for(let DBString in this.Schemas)
       for(let modelName in this.Schemas[DBString])
-        for(let fieldObj of this.Schemas[DBString][modelName])
-          this.plugInFieldRef(fieldObj)
+        for(let field of this.Schemas[DBString][modelName])
+          this.plugInFieldRef(field)
   }
 
+  /**
+   * Creates a crudengine schema for a specific model.
+   * @param {Object} model - A mongoose model
+   */
   GenerateSchema(model) {
     const Paths = this.GetPaths(model.schema)
     let fields = []
@@ -101,38 +113,54 @@ class CrudEngine {
     return fields
   }
 
+  /**
+   * Removes circular references from the schemas and saves this copy of them.
+   * Theese are the schema types, that can be turned into JSON when needed.
+   */
   GenerateDecycledSchemas() {
     for(let modelName in this.Schemas[this.BaseDBString]) {
-      const DecycledSchema = this.CopySubheaders({subheaders: this.Schemas[this.BaseDBString][modelName]})
-      this.DecycledSchemas[modelName] = DecycledSchema.subheaders
+      const DecycledSchema = this.CopySubheaders({subfields: this.Schemas[this.BaseDBString][modelName]}) // We copy the top level of fields
+      this.DecycledSchemas[modelName] = DecycledSchema.subfields // Theese new fields will be the top level of the decycled schema
       
       for(let field of this.DecycledSchemas[modelName])
         this.DecycleField(field)
     }
   }
 
-  DecycleField(fieldObj, refs = []) {
-    if(!fieldObj.subheaders) return
+  /**
+   * Recursively copies the given fields and their subfields, until circular reference is detected
+   * @param {Object} field - A crudengine field descriptor
+   * @param {Array} [refs=[]] - This parameter should be leaved empty
+   */
+  DecycleField(field, refs = []) {
+    if(!field.subfields) return
 
-    let refId = `${fieldObj.DBString}:${fieldObj.ref}`
-    if(refs.includes(refId)) return fieldObj.subheaders = []
-    if(fieldObj.ref) refs.push(refId)
+    let refId = `${field.DBString}:${field.ref}`
+    if(refs.includes(refId)) return field.subfields = [] // if a ref was already present once in one of the parent fields, we stop
+    if(field.ref) refs.push(refId) // we collect the refs of the fields that we once saw
 
-    this.CopySubheaders(fieldObj)
+    this.CopySubheaders(field)
 
-    for(let field of fieldObj.subheaders)
-      this.DecycleField(field, [...refs])
+    for(let f of field.subfields) // do the same process for every child field passing along the collected refs
+      this.DecycleField(f, [...refs])
   }
 
+  /**
+   * Copies one level of the subfields of the given field descriptor
+   * @param {Object} field - A crudengine field descriptor
+   */
   CopySubheaders(field) {
-    field.subheaders = [...field.subheaders]
+    field.subfields = [...field.subfields] // copying the subfields array
     
-    for(let i=0; i<field.subheaders.length; ++i)
-      field.subheaders[i] = {...field.subheaders[i]}
+    for(let i=0; i<field.subfields.length; ++i)
+      field.subfields[i] = {...field.subfields[i]} // copying the descriptor object of the subfields
 
     return field
   }
 
+  /**
+   * Generates a PathSchema descriptor for every schema handled by crudengine
+   */
   GeneratePathSchemas() {
     for(let modelName in this.DecycledSchemas) {
       this.PathSchemas[modelName] = {}
@@ -142,14 +170,25 @@ class CrudEngine {
     }
   }
   
+  /**
+   * Recursively generates <FieldPath, Field> entries for the field given and its subfields.
+   * @param {Object} field - A crudengine field descriptor
+   * @param {Object} acc - Generated entries will be stored in this object
+   * @param {String} [prefix] - This parameter should be leaved empty
+   */
   GeneratePathSchema(field, acc, prefix = '') {
     acc[`${prefix}${field.key}`] = field
     
-    if(field.subheaders)
-      for(let f of field.subheaders)
+    if(field.subfields)
+      for(let f of field.subfields)
         this.GeneratePathSchema(f, acc, `${prefix}${field.key}.`)
   }
 
+  /**
+   * Returns the field paths of a model that are safe to be used with fuse.js.
+   * @param {String} modelName 
+   * @param {Number} maxDepth 
+   */
   GetSchemaKeys(modelName, maxDepth = this.MaxHeaderDepth) {
     let keys = []
 
@@ -159,40 +198,65 @@ class CrudEngine {
     let keys
   }
 
+  /**
+   * Recursively collects the field paths of a field and its subfields that are safe to be used with fuse.js.
+   * @param {Object} field - A crudengine field descriptor
+   * @param {Array} keys - Keys will be collected in this array
+   * @param {*} maxDepth
+   * @param {*} [prefix] - This parameter should be leaved empty
+   * @param {*} [depth] - This parameter should be leaved empty
+   */
   GenerateSchemaKeys(field, keys, maxDepth, prefix = '', depth = 0) {
     if(depth > maxDepth) return
 
-    if(!['Object', 'Date'].some(t => field.type == t) && !field.subheaders) keys.push(`${prefix}${field.key}`)
+    if(!['Object', 'Date'].some(t => field.type == t) && !field.subfields) // fuse.js can not handle values that are not strings or numbers, so we don't collect those keys.
+      keys.push(`${prefix}${field.key}`)
     
-    if(field.subheaders)
-      for(let f of field.subheaders)
+    if(field.subfields)
+      for(let f of field.subfields)
         this.GenerateSchemaKeys(f, keys, maxDepth, `${prefix}${field.key}.`, depth+1)
   }
 
+  /**
+   * Recursively creates an object with entries of field path and mongoose field descriptors
+   * @param {Object} schema - A mongoose schema
+   * @param {Obejct} [acc] - This parameter should be leaved empty
+   * @param {String} [prefix] - This parameter should be leaved empty
+   */
   GetPaths(schema, acc = {}, prefix = '') {
-    const JoinedPaths = {...schema.paths, ...schema.subpaths}
+    let joinedPaths = {...schema.paths, ...schema.subpaths} // both paths and subpaths can store fields of the schema
 
-    for(let key in JoinedPaths) {
-      const CurrPath = JoinedPaths[key]
-      const PrefixedKey = prefix + key
+    for(let key in joinedPaths) {
+      let field = joinedPaths[key]
+      let prefixedKey = prefix + key
 
-      acc[PrefixedKey] = CurrPath
-      if(CurrPath.schema) this.GetPaths(CurrPath.schema, acc, `${PrefixedKey}.`)
+      acc[prefixedKey] = field
+
+      if(field.schema)
+        this.GetPaths(field.schema, acc, `${prefixedKey}.`)
     }
 
     return acc
   }
 
-  GenerateObjFieldTree(currentFieldLevel, fieldPath, mongooseFieldDescriptor) {
-    let fieldKeys = fieldPath.split('.')
-    let lastName = fieldKeys.pop()
+  /**
+   * Takes the fieldPath given and step by step creates crudengine field descriptors for them.
+   * @param {Array} currentFieldLevel - Created field descriptors will be collected in this
+   * @param {String} fieldPath - The "." separated path of the field in the mongoose schema
+   * @param {Object} fieldDescriptor - The mongoose descriptor of the field
+   */
+  GenerateObjFieldTree(currentFieldLevel, fieldPath, fieldDescriptor) {
+    let fieldKeys = fieldPath.split('.') // we have no information of the fields with theese keys, other then that they are Objects containign the field of the next step and possibly others
+    let lastKey = fieldKeys.pop() // this is the field that we have information about from mongoose
 
-    if( ['_id', '__v', '$'].some(s => lastName == s) ) return
+    if( ['_id', '__v', '$'].some(s => lastKey == s) ) return // theese fields are not handled by crudengine
 
     for(const fieldKey of fieldKeys) {
+      // first we search for an already created field descriptor that is on the same level as the key
       let ind = 0
       while( ind < currentFieldLevel.length && currentFieldLevel[ind].key != fieldKey ) ind++
 
+      // if we went through the whole level and found no descriptor, we create one
       if(ind == currentFieldLevel.length)
         currentFieldLevel.push({
           key: fieldKey,
@@ -205,35 +269,42 @@ class CrudEngine {
           default: null,
           minReadAccess: 0,
           minWriteAccess: 0,
-          subheaders: []
+          subfields: []
         })
 
-      currentFieldLevel = currentFieldLevel[ind].subheaders
+      // we go one level deeper for the next key
+      currentFieldLevel = currentFieldLevel[ind].subfields
     }
-
-    currentFieldLevel.push( this.GenerateSchemaField(lastName, mongooseFieldDescriptor) )
+    // when every parent descriptor is created, we create the one we have information about from mongoose
+    currentFieldLevel.push( this.GenerateSchemaField(lastKey, fieldDescriptor) )
   }
 
-  GenerateSchemaField(fieldKey, mongooseFieldDescriptor) {
+  /**
+   * Creates a crudengine field descriptor from a mongoose one.
+   * @param {String} fieldKey 
+   * @param {Object} fieldDescriptor - A mongoose field descriptor
+   */
+  GenerateSchemaField(fieldKey, fieldDescriptor) {
+    // we basically collect the information we know about the field
     let field = {
       key: fieldKey,
-      isArray: mongooseFieldDescriptor.instance == 'Array',
-      type: mongooseFieldDescriptor.instance,
-      required: mongooseFieldDescriptor.options.required || false,
-      ref: mongooseFieldDescriptor.options.ref || null,
-      name: mongooseFieldDescriptor.options.name || null,
-      description: mongooseFieldDescriptor.options.description || null,
-      default: mongooseFieldDescriptor.options.default || null,
-      minReadAccess: mongooseFieldDescriptor.options.minReadAccess || 0,
-      minWriteAccess: mongooseFieldDescriptor.options.minWriteAccess || 0,
+      isArray: fieldDescriptor.instance == 'Array',
+      type: fieldDescriptor.instance,
+      required: fieldDescriptor.options.required || false,
+      ref: fieldDescriptor.options.ref || null,
+      name: fieldDescriptor.options.name || null,
+      description: fieldDescriptor.options.description || null,
+      default: fieldDescriptor.options.default || null,
+      minReadAccess: fieldDescriptor.options.minReadAccess || 0,
+      minWriteAccess: fieldDescriptor.options.minWriteAccess || 0,
     }
-    if(mongooseFieldDescriptor.options.primary) field.primary = true
-    if(mongooseFieldDescriptor.options.hidden) field.hidden = true
+    if(fieldDescriptor.options.primary) field.primary = true
+    if(fieldDescriptor.options.hidden) field.hidden = true
 
     if(field.isArray) {
-      const Emb = mongooseFieldDescriptor.$embeddedSchemaType
+      const Emb = fieldDescriptor.$embeddedSchemaType
 
-      if(!Emb.instance) field.subheaders = []
+      if(!Emb.instance) field.subfields = []
       if(Emb.options.primary) field.primary = true
       if(Emb.options.hidden) field.hidden = true
       field.type = Emb.instance || 'Object'
@@ -248,20 +319,22 @@ class CrudEngine {
     if(field.type == 'ObjectID') field.type = 'Object'
     else if(field.type == 'Embedded') {
       field.type = 'Object'
-      field.subheaders = []
+      field.subfields = []
     }
     else if(field.type == 'Mixed') {
       field.type = 'Object'
       this.LogMixedType(fieldKey, field.name)  
     }
 
+    // if the field has a ref, we check if it is a string or a model
     if(field.ref) {
       let givenRef = field.ref
       let isModel = typeof givenRef == 'function'
 
-      field.DBString = isModel ? givenRef.db._connectionString : this.BaseDBString
+      field.DBString = isModel ? givenRef.db._connectionString : this.BaseDBString // we need to know which connection the ref model is from
       field.ref = isModel ? givenRef.modelName : givenRef
       
+      // if the model is form another connection, we generate a schema descriptor for it, so we can later use it as ref
       if(field.DBString != this.BaseDBString) {
         if(!this.Schemas[field.DBString]) this.Schemas[field.DBString] = {}
         this.Schemas[field.DBString][field.ref] = this.GenerateSchema(givenRef)
@@ -271,18 +344,29 @@ class CrudEngine {
     return field
   }
 
-  plugInFieldRef(fieldObj) {
-    if(!fieldObj.ref && !fieldObj.subheaders) return
+  /**
+   * Recursively plugs in the references of the given field and its subfields.
+   * @param {Object} field - A crudengine field descriptor
+   */
+  plugInFieldRef(field) {
+    if(!field.ref && !field.subfields) return
 
-    if(fieldObj.ref) {
-      if(fieldObj.ref == 'CRUDFile') return fieldObj.subheaders = this.CRUDFileShema
-      if(this.Schemas[fieldObj.DBString][fieldObj.ref]) return fieldObj.subheaders = this.Schemas[fieldObj.DBString][fieldObj.ref]
+    if(field.ref) {
+      if(field.ref == 'CRUDFile') return field.subfields = this.CRUDFileShema // CRUDfile is not stored in the "Schemas" object as it comes from this library not the user.
+      if(this.Schemas[field.DBString][field.ref]) return field.subfields = this.Schemas[field.DBString][field.ref] // If the ref is known as a schema, then the fields new subheaders are the fields of that schema
     }
 
-    for(const fObj of fieldObj.subheaders)
+    for(const fObj of field.subfields)
       this.plugInFieldRef(fObj)
   }
 
+  /**
+   * Collects the fields of a model, which need a higher accesslevel, then given as parameter.
+   * @param {String} modelName 
+   * @param {Number} [accesslevel=0]
+   * @param {String} [authField='minReadAccess'] - Either 'minReadAccess' or 'minWriteAccess'
+   * @param {Boolean} [excludeSubKeys=false] - Indicates whether or not only top level fields should be checked
+   */
   GetDeclinedPaths(modelName, accesslevel = 0, authField = 'minReadAccess', excludeSubKeys = false) {
       let fieldEntries = Object.entries(this.PathSchemas[modelName])
 
@@ -292,6 +376,13 @@ class CrudEngine {
       return fieldEntries.map(entr => entr[0])
   }
 
+  /**
+   * Removes every field from an array of documents, which need a  higher accesslevel, then given as parameter.
+   * @param {String} modelName 
+   * @param {Array} documents 
+   * @param {Number} [accesslevel=0] 
+   * @param {String} [authField='minReadAccess'] 
+   */
   RemoveDeclinedFields(modelName, documents, accesslevel = 0, authField = 'minReadAccess') {
     for(const document of documents)
       this.RemoveDeclinedFieldsFromObject(this.Schemas[this.BaseDBString][modelName], document, accesslevel, authField)
@@ -299,30 +390,43 @@ class CrudEngine {
     return documents
   }
 
+  /**
+   * Removes every field from an object, which need a higher accesslevel, then given as parameter.
+   * @param {Array} fields - A crudengine schema descriptor
+   * @param {*} object - The object to remove from
+   * @param {*} [accesslevel=0]  
+   * @param {*} [authField='minReadAccess']  
+   */
   RemoveDeclinedFieldsFromObject(fields, object, accesslevel = 0, authField = 'minReadAccess') {
     for(let field of fields) {
       if(field[authField] > accesslevel) delete object[field.key]
 
-      else if(field.subheaders && object[field.key]) {
-        if(field.isArray) object[field.key].forEach( obj => this.RemoveDeclinedFieldsFromObject(field.subheaders, obj, accesslevel, authField) )
-        else this.RemoveDeclinedFieldsFromObject(field.subheaders, object[field.key], accesslevel, authField)
+      else if(field.subfields && object[field.key]) {
+        if(field.isArray) object[field.key].forEach( obj => this.RemoveDeclinedFieldsFromObject(field.subfields, obj, accesslevel, authField) )
+        else this.RemoveDeclinedFieldsFromObject(field.subfields, object[field.key], accesslevel, authField)
       }
     }
   }
 
+  /**
+   * Recursively creates field descriptors that only have those information, which can be useful on the frontend
+   * @param {(String|Array)} schema - Model name, or crudengine schema descriptor 
+   * @param {Number} [depth=0] - This parameter should be leaved empty
+   */
   GetHeaders(schema, depth = 0) {
-    if(typeof schema == 'string') schema = this.Schemas[this.BaseDBString][schema]
+    if(typeof schema == 'string') schema = this.Schemas[this.BaseDBString][schema] // if string was given, we get the schema descriptor
     let headers = []
 
     for(let field of schema) {
-      if(field.hidden) continue
+      if(field.hidden) continue // fields marked as hidden should not be visible as (table)headers
       let hField = {}
 
-      for(let key of ['name', 'key', 'description', 'type', 'isArray', 'primary'])
+      for(let key of ['name', 'key', 'description', 'type', 'isArray', 'primary']) // we copy theese fields as they are useful on the frontend
         hField[key] = field[key]
 
-      if(field.subheaders && depth < this.MaxHeaderDepth)
-        hField.subheaders = this.GetHeaders(field.subheaders, field.ref ? depth+1 : depth)
+      // if current depth is lower then max, we collect the headers of the subfields and name them subheaders
+      if(field.subfields && depth < this.MaxHeaderDepth)
+        hField.subheaders = this.GetHeaders(field.subfields, field.ref ? depth+1 : depth)
 
       headers.push(hField)
     }
@@ -330,26 +434,32 @@ class CrudEngine {
     return headers
   }
 
+  /**
+   * Helper function, that is used when an image was uploaded.
+   * It will resize the image if needed to the specified size.
+   * It will create a CRUDFile document for the image, with the properties of the image.
+   * It will also create a thumbnail of the image if needed.
+   * @param {Object} req 
+   * @param {Object} res 
+   */
   handleImageUpload(req, res) {
     let multerPath    = req.file.path
     let extension     = req.file.originalname.split('.').pop()
-    let filePath      = `${req.file.filename}.${extension}`
+    let filePath      = `${req.file.filename}.${extension}` // the image will be saved with the extension attached
 
-    this.resizeImageTo(multerPath, this.MaxImageSize, `${multerPath}.${extension}`)
+    this.resizeImageTo(multerPath, this.MaxImageSize, `${multerPath}.${extension}`) // resizes and copies the image
       .then( () => {
-        if(this.CreateThumbnail)
+        if(this.CreateThumbnail) //if a thumbnail is needed create one
           return this.resizeImageTo(multerPath, this.MaxThumbnailSize, `${multerPath}_thumbnail.${extension}`)
-        else
-          return Promise.resolve()
       })
-      .then( () => fs.promises.unlink(multerPath) )
-      .then( () => CRUDFileModel.create({
+      .then( () => fs.promises.unlink(multerPath) ) // we don't need the original image anymore
+      .then( () => CRUDFileModel.create({ // we create the CRUDFile document
         name: req.file.originalname,
         path: filePath,
         size: req.file.size,
         extension: extension,
         isImage: true,
-        ...this.CreateThumbnail && {thumbnailPath: `${req.file.filename}_thumbnail.${extension}`}
+        ...this.CreateThumbnail && {thumbnailPath: `${req.file.filename}_thumbnail.${extension}`} // A hacky way of only append thumbnailPath to an object, when CreateThumbnail is true
       }))
       .then( file => res.send(file) )
       .catch( err => {
@@ -358,14 +468,20 @@ class CrudEngine {
       })
   }
 
+  /**
+   * Resizes an image at the sourcePath to the given size and saves it to the destintaionPath.
+   * @param {String} sourcePath 
+   * @param {Number} size 
+   * @param {String} destinationPath 
+   */
   resizeImageTo(sourcePath, size, destinationPath) {
-    if(size == null) return fs.promises.copyFile(sourcePath, destinationPath)
+    if(size == null) return fs.promises.copyFile(sourcePath, destinationPath) // if size is null, we do not resize just save it to the destination path
     
     return new Promise( (resolve, reject) => {
       sharp(sourcePath)
         .resize(size, size, {
           fit: 'inside',
-          withoutEnlargement: true,
+          withoutEnlargement: true, // if the size was already smaller then specified, we do not enlarge it
         })
         .toFile(destinationPath, (err, info) => {
           if(err) reject(err)
@@ -374,6 +490,13 @@ class CrudEngine {
     })
   }
 
+  /**
+   * Adds a middleware function to the given model.
+   * @param {String} modelName 
+   * @param {String} operation 
+   * @param {String} timing 
+   * @param {Function} middlewareFunction 
+   */
   addMiddleware(modelName, operation, timing, middlewareFunction) {
     if(!this.Middlewares[modelName]) {
       this.LogMissingModel(modelName)
@@ -389,14 +512,24 @@ class CrudEngine {
     }
 
     this.Middlewares[modelName][operation][timing] = middlewareFunction
-}
+  }
 
+  /**
+   * A helper function, that is a template for the CRUD routes.
+   * @param {Object} req 
+   * @param {Object} res 
+   * @param {Function} mainPart 
+   * @param {Function} responsePart 
+   * @param {String} operation 
+   */
   CRUDRoute(req, res, mainPart, responsePart, operation) {
+    // if the model is unkown send an error
     if(!this.Schemas[this.BaseDBString][req.params.model]) {
       this.LogMissingModel(req.params.model)
       return res.status(500).send('MISSING MODEL')
     }
 
+    // the code below calls the middleware and normal parts of the route and handles their errors correspondingly
     const MiddlewareFunctions = this.Middlewares[req.params.model][operation]
     MiddlewareFunctions.before.call(this, req, res)
       .then( () => {
@@ -414,6 +547,12 @@ class CrudEngine {
       .catch( message => this.LogMiddlewareMessage(req.params.model, operation, 'before', message) )
   }
 
+  /**
+   * A helper function, that is a tempalte for Service routes.
+   * @param {Obejct} req 
+   * @param {Object} res 
+   * @param {String} paramsKey 
+   */
   ServiceRoute(req, res, paramsKey) {
     if(!this.Services[req.params.service]) {
       this.LogMissingService(req.params.service)
@@ -430,6 +569,9 @@ class CrudEngine {
       .catch( error => res.status(500).send(error) )
   }
 
+  /**
+   * Generates all the routes of crudengine and returns the express router.
+   */
   GenerateRoutes() {
     Router.get( '/schema', (req, res) => res.send(this.DecycledSchemas) )
 
@@ -482,16 +624,17 @@ class CrudEngine {
       this.ServiceRoute(req, res, 'body')
     })
 
-    if(this.FileDIR) {
-      Router.use( `${this.ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDIR)) )
-      Router.use( `${this.ServeStaticPath}`, (req, res) => res.status(404).send('NOT FOUND') )
+    if(this.FileDir) {
+      Router.use( `${this.ServeStaticPath}`, express.static(path.resolve(__dirname, this.FileDir)) )
+      Router.use( `${this.ServeStaticPath}`, (req, res) => res.status(404).send('NOT FOUND') ) // If a file is not found in FileDir, send back 404 NOT FOUND
 
+      // 
       Router.post( "/fileupload", this.upload.single('file'), (req, res) => {
         if(req.file.mimetype.startsWith('image')) return this.handleImageUpload(req, res)
 
         let multerPath    = req.file.path
         let extension     = req.file.originalname.split('.').pop()
-        let filePath      = `${req.file.filename}.${extension}`
+        let filePath      = `${req.file.filename}.${extension}` // the file will be saved with the extension attached
 
         fs.renameSync(multerPath, `${multerPath}.${extension}`)
 
@@ -502,6 +645,7 @@ class CrudEngine {
           extension: extension,
         }
 
+        // we create the CRUDFile document with the properties of the file
         CRUDFileModel.create(fileData, (err, file) => {
           if(err) res.status(500).send(err)
           else res.send(file)
@@ -511,21 +655,23 @@ class CrudEngine {
       Router.delete( "/filedelete/:id", (req, res) => {
         CRUDFileModel.findOne({_id: req.params.id})
           .then( file => {
-            let realPath = path.resolve(this.FileDIR, file.path)
+            let realPath = path.resolve(this.FileDir, file.path)
             let thumbnailPath = realPath.replace('.', '_thumbnail.')
-            if(!realPath.startsWith(this.FileDIR)) return res.status(500).send('INVALID PATH')
+            if(!realPath.startsWith(this.FileDir)) return res.status(500).send('INVALID PATH') // for safety, if the resolved path is outside of FileDir we return 500 INVALID PATH
 
+            // we remove both the file and thumbnail if they exists
             if(fs.existsSync(realPath)) fs.unlinkSync(realPath)
             if(fs.existsSync(thumbnailPath)) fs.unlinkSync(thumbnailPath)
 
-            CRUDFileModel.deleteOne({_id: file._id})
-              .then( () => res.send() )
-              .catch( err => res.status(500).send(err) )
+            // we delete the CRUDFile document
+            return CRUDFileModel.deleteOne({_id: file._id})
           })
+          .then( () => res.send() )
           .catch( err => res.status(500).send(err) )
       })
     }
 
+    // Read routes will use "lean" so that results are not immutable
     Router.get( '/:model/find', (req, res) => {
       function mainPart(req, res) {
         if(!req.query.filter) req.query.filter = "{}"
@@ -562,7 +708,7 @@ class CrudEngine {
         
         if(!req.body.threshold) req.body.threshold = 0.4
         if(!req.body.pattern) return res.send(results)
-        if(!req.body.keys || req.body.keys.length == 0) req.body.keys = this.GetSchemaKeys(req.params.model, req.body.depth)
+        if(!req.body.keys || req.body.keys.length == 0) req.body.keys = this.GetSchemaKeys(req.params.model, req.body.depth) // if keys were not given, we search in all keys
   
         const fuse = new Fuse(results, {
           includeScore: false,
@@ -570,7 +716,7 @@ class CrudEngine {
           threshold: req.body.threshold
         })
   
-        let results = fuse.search(req.body.pattern).map(r => r.item)
+        let results = fuse.search(req.body.pattern).map(r => r.item) // fuse.js's results include some other things, then the documents so we need to get them
         res.send(results)
       }
 
@@ -651,6 +797,9 @@ class CrudEngine {
     return Router
   }
 
+  // The functions below are the logs of crudengine, they are formatted using bash sequences
+  // Colors and formattings can be found at: https://misc.flogisoft.com/bash/tip_colors_and_formatting
+  // \e[ should be changed to \x1b[ to work with Node.js
   LogBreakingChanges() {
     console.log('\x1b[36m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE CHANGES:')
     console.log('\x1b[36m%s\x1b[0m', `
@@ -674,7 +823,7 @@ There is also no maximum accesslevel.\n`)
     console.log('\x1b[93m\x1b[4m\x1b[1m%s\x1b[0m', '\nCRUDENGINE WARNING:')
     console.log('\x1b[93m%s\x1b[0m', `
 'Mixed' type field '${key}'!
-To get subheaders for this field use the following syntax:
+To get subfields for this field use the following syntax:
 ${key}: {
   name: ${name},
   type: new mongoose.Schema({
